@@ -14,11 +14,14 @@ import {
   Lock,
   AlertTriangle,
   Unlock,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from "lucide-react"
 
-// อย่าลืมสร้างไฟล์ ExamTimer.tsx ตามที่แนะนำก่อนหน้านี้
 import { ExamTimer } from "@/components/ExamTimer"
 
+// Socket
 const socket = io("http://localhost:8001", {
   autoConnect: false,
 })
@@ -26,7 +29,7 @@ const socket = io("http://localhost:8001", {
 export default function ExamRoomPage() {
   const params = useParams()
   const router = useRouter()
-  const sessionId = params.sessionId
+  const sessionId = params.sessionId as string
 
   // --- States ---
   const [examData, setExamData] = useState<any>(null)
@@ -35,12 +38,105 @@ export default function ExamRoomPage() {
   const [saving, setSaving] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
 
+  // Offline States
+  const [isOnline, setIsOnline] = useState(true)
+  const [pendingSync, setPendingSync] = useState(0)
+
   // Security States
   const [isLocked, setIsLocked] = useState(false)
   const [warnings, setWarnings] = useState(0)
   const [canResume, setCanResume] = useState(false)
 
-  // --- 1. Load Exam Data ---
+  // Ref สำหรับเก็บค่า isOnline ล่าสุดเพื่อใช้ใน Interval
+  const isOnlineRef = useRef(true)
+
+  // --- 1. Offline / Online Detection Logic (Improved Heartbeat) ---
+  useEffect(() => {
+    // Update ref whenever state changes
+    isOnlineRef.current = isOnline
+  }, [isOnline])
+
+  useEffect(() => {
+    // 1. Browser Event Listeners (Passive check)
+    const handleOnline = () => updateOnlineStatus(true)
+    const handleOffline = () => updateOnlineStatus(false)
+
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
+
+    // 2. Active Heartbeat Check (Active check every 3 seconds)
+    // เช็คว่า Server ยังอยู่ไหม (แก้ปัญหามี LAN แต่ไม่มีเน็ต)
+    const heartbeatInterval = setInterval(async () => {
+      try {
+        // ยิงไปที่ root path หรือ path เบาๆ เพื่อเช็คสถานะ
+        await axios.get("http://localhost:8000/", { timeout: 2000 })
+
+        // ถ้า request สำเร็จ แต่สถานะปัจจุบันคือ offline -> ให้กลับมา online
+        if (!isOnlineRef.current) {
+          updateOnlineStatus(true)
+        }
+      } catch (error) {
+        // ถ้า request ล้มเหลว -> ให้ถือว่า offline
+        if (isOnlineRef.current) {
+          console.log("Heartbeat failed. Going offline.")
+          updateOnlineStatus(false)
+        }
+      }
+    }, 3000) // เช็คทุก 3 วินาที
+
+    return () => {
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
+      clearInterval(heartbeatInterval)
+    }
+  }, [])
+
+  // ฟังก์ชันกลางสำหรับเปลี่ยนสถานะและ Sync
+  const updateOnlineStatus = (status: boolean) => {
+    setIsOnline(status)
+    isOnlineRef.current = status // Update Ref ทันที
+
+    if (status) {
+      console.log("Network restored. Connecting socket & syncing...")
+      if (socket.disconnected) socket.connect()
+      syncAnswers()
+    } else {
+      console.log("Network lost.")
+    }
+  }
+
+  // เช็คจำนวนที่ค้าง Sync ตอนโหลดครั้งแรก
+  useEffect(() => {
+    const queue = JSON.parse(
+      localStorage.getItem(`offline_queue_${sessionId}`) || "[]"
+    )
+    setPendingSync(queue.length)
+  }, [sessionId])
+
+  const syncAnswers = async () => {
+    const queueKey = `offline_queue_${sessionId}`
+    const queue = JSON.parse(localStorage.getItem(queueKey) || "[]")
+
+    if (queue.length === 0) return
+
+    setSaving(true)
+    try {
+      // Loop ยิง API
+      for (const item of queue) {
+        await axios.post("http://localhost:8000/take/answer", item)
+      }
+
+      localStorage.removeItem(queueKey)
+      setPendingSync(0)
+      console.log("Sync completed!")
+    } catch (error) {
+      console.error("Sync failed, will retry later")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // --- 2. Load Exam Data ---
   useEffect(() => {
     const fetchSession = async () => {
       try {
@@ -49,24 +145,32 @@ export default function ExamRoomPage() {
         )
         setExamData(res.data)
 
-        // Check Locked Status from DB (กัน F5)
         if (res.data.status === "LOCKED") {
           setIsLocked(true)
           setCanResume(false)
         }
 
-        // Restore Answers
         const savedAnswers: Record<number, number> = {}
         res.data.answers.forEach((ans: any) => {
           savedAnswers[ans.questionId] = ans.selectedChoiceId
         })
+
+        // Merge Offline Queue Data
+        const queue = JSON.parse(
+          localStorage.getItem(`offline_queue_${sessionId}`) || "[]"
+        )
+        queue.forEach((item: any) => {
+          savedAnswers[item.questionId] = item.selectedChoiceId
+        })
+
         setAnswers(savedAnswers)
 
-        if (!socket.connected) socket.connect()
+        if (navigator.onLine && !socket.connected) socket.connect()
       } catch (e) {
         console.error(e)
-        alert("Session หมดอายุ หรือโหลดข้อมูลไม่สำเร็จ")
-        router.push("/student/dashboard")
+        // ถ้าโหลดไม่สำเร็จเพราะเน็ตหลุด ให้พยายามแสดง Error หรือ Handle ตามสมควร
+        // ในที่นี้ถ้าโหลด Exam ไม่ได้แต่แรก จะทำอะไรไม่ได้มาก นอกจากแจ้งเตือน
+        alert("ไม่สามารถโหลดข้อสอบได้ กรุณาตรวจสอบการเชื่อมต่อ")
       } finally {
         setLoading(false)
       }
@@ -78,33 +182,31 @@ export default function ExamRoomPage() {
     }
   }, [sessionId, router])
 
-  // --- 2. Security Logic ---
+  // --- 3. Security Logic ---
   useEffect(() => {
     if (!examData) return
     const { exam, studentId, student } = examData
 
-    // Join Room
-    socket.emit("join_exam_room", exam.id)
+    if (isOnline) socket.emit("join_exam_room", exam.id)
 
-    // Report Cheating Function
     const reportCheating = (type: string) => {
       if (isLocked) return
-
       setWarnings((prev) => prev + 1)
       setIsLocked(true)
       setCanResume(false)
 
-      socket.emit("cheating_alert", {
-        sessionId: Number(sessionId),
-        examId: exam.id,
-        studentId: studentId,
-        studentName: student?.fullName || "Unknown",
-        type: type,
-        timestamp: new Date(),
-      })
+      if (isOnline) {
+        socket.emit("cheating_alert", {
+          sessionId: Number(sessionId),
+          examId: exam.id,
+          studentId: studentId,
+          studentName: student?.fullName || "Unknown",
+          type: type,
+          timestamp: new Date(),
+        })
+      }
     }
 
-    // Listeners
     const handleVisibilityChange = () => {
       if (document.hidden) reportCheating("TAB_SWITCH")
     }
@@ -116,18 +218,14 @@ export default function ExamRoomPage() {
     document.addEventListener("visibilitychange", handleVisibilityChange)
     document.addEventListener("fullscreenchange", handleFullscreenChange)
 
-    // Unlock Listener
     socket.on("force_unlock", () => {
       setCanResume(true)
     })
 
-    // Auto Fullscreen
     const enterFullscreen = async () => {
       try {
         await document.documentElement.requestFullscreen()
-      } catch (err) {
-        console.log("Fullscreen blocked")
-      }
+      } catch (err) {}
     }
     enterFullscreen()
 
@@ -136,10 +234,9 @@ export default function ExamRoomPage() {
       document.removeEventListener("fullscreenchange", handleFullscreenChange)
       socket.off("force_unlock")
     }
-  }, [examData, isLocked])
+  }, [examData, isLocked, isOnline])
 
-  // --- 3. Handlers ---
-
+  // --- 4. Handlers ---
   const handleResumeExam = async () => {
     try {
       await document.documentElement.requestFullscreen()
@@ -148,48 +245,79 @@ export default function ExamRoomPage() {
     setCanResume(false)
   }
 
+  const saveToOfflineQueue = (payload: any) => {
+    const queueKey = `offline_queue_${sessionId}`
+    const queue = JSON.parse(localStorage.getItem(queueKey) || "[]")
+
+    const newQueue = queue.filter(
+      (item: any) => item.questionId !== payload.questionId
+    )
+    newQueue.push(payload)
+
+    localStorage.setItem(queueKey, JSON.stringify(newQueue))
+    setPendingSync(newQueue.length)
+  }
+
   const handleAnswer = async (questionId: number, choiceId: number) => {
     setAnswers((prev) => ({ ...prev, [questionId]: choiceId }))
     setSaving(true)
+
+    const payload = {
+      sessionId: Number(sessionId),
+      questionId,
+      selectedChoiceId: choiceId,
+    }
+
+    // ใช้ State isOnline ที่แม่นยำขึ้นจาก Heartbeat
+    if (!isOnline) {
+      saveToOfflineQueue(payload)
+      setTimeout(() => setSaving(false), 200)
+      return
+    }
+
     try {
-      await axios.post("http://localhost:8000/take/answer", {
-        sessionId: Number(sessionId),
-        questionId,
-        selectedChoiceId: choiceId,
+      // Set Timeout ให้ API ถ้า server ช้าเกิน 3 วิ ให้ถือว่าหลุด
+      await axios.post("http://localhost:8000/take/answer", payload, {
+        timeout: 3000,
       })
     } catch (error) {
-      console.error("Auto-save failed")
+      console.log("Save failed, switching to offline queue")
+      saveToOfflineQueue(payload)
+
+      // ถ้า API Fail แสดงว่าเน็ตมีปัญหา ปรับสถานะเป็น Offline ทันที
+      updateOnlineStatus(false)
     } finally {
       setTimeout(() => setSaving(false), 500)
     }
   }
 
-  const submitExam = async () => {
-    if (isSubmitted) return
-    setIsSubmitted(true)
+  const handleManualSubmit = async () => {
+    if (pendingSync > 0 && !isOnline) {
+      alert(
+        "คุณกำลัง Offline! ระบบบันทึกคำตอบไว้ในเครื่องแล้ว \nกรุณาเชื่อมต่ออินเทอร์เน็ตก่อนกดส่งข้อสอบ"
+      )
+      return
+    }
+    if (!confirm("ยืนยันการส่งข้อสอบ?")) return
+
+    await syncAnswers()
+
     try {
       await axios.post("http://localhost:8000/take/submit", {
         sessionId: Number(sessionId),
       })
       router.push("/student/dashboard")
     } catch (error) {
-      alert("ส่งไม่สำเร็จ")
+      alert("ส่งไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ต")
     }
   }
 
-  const handleManualSubmit = () => {
-    if (!confirm("ยืนยันการส่งข้อสอบ?")) return
-    submitExam()
-  }
-
-  // Called by Timer
   const handleTimeUp = () => {
-    alert("หมดเวลาสอบ! ระบบกำลังส่งคำตอบอัตโนมัติ")
-    submitExam()
+    alert("หมดเวลาสอบ! ระบบจะพยายามส่งคำตอบอัตโนมัติ")
+    handleManualSubmit()
   }
 
   // --- Render ---
-
   if (loading)
     return (
       <div className="h-screen flex items-center justify-center">
@@ -198,7 +326,6 @@ export default function ExamRoomPage() {
     )
   if (!examData) return null
 
-  // Locked Overlay
   if (isLocked) {
     if (canResume) {
       return (
@@ -223,9 +350,7 @@ export default function ExamRoomPage() {
             ระบบตรวจพบพฤติกรรมที่ผิดกฎการสอบ
           </p>
           <p className="mt-4">กรุณายกมือเรียกผู้คุมสอบเพื่อทำการปลดล็อก</p>
-          <p className="mt-4 text-sm opacity-70">
-            Warnings: {warnings} | Session: {sessionId}
-          </p>
+          <p className="mt-4 text-sm opacity-70">Warnings: {warnings}</p>
         </div>
       </div>
     )
@@ -235,6 +360,21 @@ export default function ExamRoomPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20 select-none">
+      {/* Offline Warning Banner */}
+      {!isOnline && (
+        <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-bold sticky top-0 z-[100] flex justify-center items-center gap-2 animate-pulse">
+          <WifiOff size={16} />
+          ขาดการเชื่อมต่ออินเทอร์เน็ต!
+          (ระบบกำลังบันทึกคำตอบลงเครื่องของคุณอัตโนมัติ)
+        </div>
+      )}
+      {isOnline && pendingSync > 0 && (
+        <div className="bg-blue-500 text-white text-center py-1 px-4 text-xs font-bold sticky top-0 z-[100] flex justify-center items-center gap-2">
+          <RefreshCw size={12} className="animate-spin" />
+          เชื่อมต่อแล้ว... กำลังส่งคำตอบที่ค้างอยู่ ({pendingSync} ข้อ)
+        </div>
+      )}
+
       <header className="bg-white border-b h-16 px-6 flex items-center justify-between sticky top-0 z-10 shadow-sm">
         <div className="w-1/4">
           <h1 className="font-bold text-lg text-blue-900 truncate">
@@ -243,7 +383,6 @@ export default function ExamRoomPage() {
           <p className="text-xs text-gray-500 truncate">{exam.title}</p>
         </div>
 
-        {/* --- Timer --- */}
         <div className="flex-1 flex justify-center">
           <ExamTimer
             initialSeconds={examData.remainingTime}
@@ -252,21 +391,37 @@ export default function ExamRoomPage() {
         </div>
 
         <div className="w-1/4 flex justify-end items-center gap-4">
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-100 border text-sm">
-            {saving ? (
-              <Loader2 size={12} className="animate-spin text-gray-500" />
+          <div
+            className={`flex items-center gap-2 px-3 py-1 rounded-full border text-sm transition-colors ${
+              !isOnline
+                ? "bg-amber-100 border-amber-200 text-amber-700"
+                : "bg-gray-100 border-gray-200"
+            }`}
+          >
+            {!isOnline ? (
+              <>
+                <WifiOff size={14} />
+                <span>Offline ({pendingSync})</span>
+              </>
+            ) : saving ? (
+              <>
+                <Loader2 size={12} className="animate-spin text-gray-500" />
+                <span className="text-gray-500">Saving...</span>
+              </>
             ) : (
-              <CheckCircle2 size={14} className="text-green-600" />
+              <>
+                <CheckCircle2 size={14} className="text-green-600" />
+                <span className="text-green-700">Saved</span>
+              </>
             )}
-            <span className={saving ? "text-gray-500" : "text-green-700"}>
-              {saving ? "Saving..." : "Saved"}
-            </span>
           </div>
+
           <Button
             onClick={handleManualSubmit}
             className="bg-blue-600 hover:bg-blue-700"
+            disabled={!isOnline && pendingSync > 0}
           >
-            ส่งคำตอบ
+            {!isOnline && pendingSync > 0 ? "รอสัญญาณเน็ต..." : "ส่งคำตอบ"}
           </Button>
         </div>
       </header>
