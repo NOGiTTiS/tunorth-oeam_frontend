@@ -20,6 +20,7 @@ import {
 } from "lucide-react"
 
 import { ExamTimer } from "@/components/ExamTimer"
+import AuthGuard from "@/components/AuthGuard"
 
 // Socket
 const socket = io("http://localhost:8001", {
@@ -359,130 +360,132 @@ export default function ExamRoomPage() {
   const { exam } = examData
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 select-none">
-      {/* Offline Warning Banner */}
-      {!isOnline && (
-        <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-bold sticky top-0 z-[100] flex justify-center items-center gap-2 animate-pulse">
-          <WifiOff size={16} />
-          ขาดการเชื่อมต่ออินเทอร์เน็ต!
-          (ระบบกำลังบันทึกคำตอบลงเครื่องของคุณอัตโนมัติ)
-        </div>
-      )}
-      {isOnline && pendingSync > 0 && (
-        <div className="bg-blue-500 text-white text-center py-1 px-4 text-xs font-bold sticky top-0 z-[100] flex justify-center items-center gap-2">
-          <RefreshCw size={12} className="animate-spin" />
-          เชื่อมต่อแล้ว... กำลังส่งคำตอบที่ค้างอยู่ ({pendingSync} ข้อ)
-        </div>
-      )}
+    <AuthGuard allowedRoles={["STUDENT"]}>
+      <div className="min-h-screen bg-gray-50 pb-20 select-none">
+        {/* Offline Warning Banner */}
+        {!isOnline && (
+          <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-bold sticky top-0 z-[100] flex justify-center items-center gap-2 animate-pulse">
+            <WifiOff size={16} />
+            ขาดการเชื่อมต่ออินเทอร์เน็ต!
+            (ระบบกำลังบันทึกคำตอบลงเครื่องของคุณอัตโนมัติ)
+          </div>
+        )}
+        {isOnline && pendingSync > 0 && (
+          <div className="bg-blue-500 text-white text-center py-1 px-4 text-xs font-bold sticky top-0 z-[100] flex justify-center items-center gap-2">
+            <RefreshCw size={12} className="animate-spin" />
+            เชื่อมต่อแล้ว... กำลังส่งคำตอบที่ค้างอยู่ ({pendingSync} ข้อ)
+          </div>
+        )}
 
-      <header className="bg-white border-b h-16 px-6 flex items-center justify-between sticky top-0 z-10 shadow-sm">
-        <div className="w-1/4">
-          <h1 className="font-bold text-lg text-blue-900 truncate">
-            {exam.subjectName}
-          </h1>
-          <p className="text-xs text-gray-500 truncate">{exam.title}</p>
-        </div>
-
-        <div className="flex-1 flex justify-center">
-          <ExamTimer
-            initialSeconds={examData.remainingTime}
-            onTimeUp={handleTimeUp}
-          />
-        </div>
-
-        <div className="w-1/4 flex justify-end items-center gap-4">
-          <div
-            className={`flex items-center gap-2 px-3 py-1 rounded-full border text-sm transition-colors ${
-              !isOnline
-                ? "bg-amber-100 border-amber-200 text-amber-700"
-                : "bg-gray-100 border-gray-200"
-            }`}
-          >
-            {!isOnline ? (
-              <>
-                <WifiOff size={14} />
-                <span>Offline ({pendingSync})</span>
-              </>
-            ) : saving ? (
-              <>
-                <Loader2 size={12} className="animate-spin text-gray-500" />
-                <span className="text-gray-500">Saving...</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 size={14} className="text-green-600" />
-                <span className="text-green-700">Saved</span>
-              </>
-            )}
+        <header className="bg-white border-b h-16 px-6 flex items-center justify-between sticky top-0 z-10 shadow-sm">
+          <div className="w-1/4">
+            <h1 className="font-bold text-lg text-blue-900 truncate">
+              {exam.subjectName}
+            </h1>
+            <p className="text-xs text-gray-500 truncate">{exam.title}</p>
           </div>
 
-          <Button
-            onClick={handleManualSubmit}
-            className="bg-blue-600 hover:bg-blue-700"
-            disabled={!isOnline && pendingSync > 0}
-          >
-            {!isOnline && pendingSync > 0 ? "รอสัญญาณเน็ต..." : "ส่งคำตอบ"}
-          </Button>
-        </div>
-      </header>
+          <div className="flex-1 flex justify-center">
+            <ExamTimer
+              initialSeconds={examData.remainingTime}
+              onTimeUp={handleTimeUp}
+            />
+          </div>
 
-      <main className="max-w-4xl mx-auto p-6 space-y-6">
-        <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex gap-3 text-blue-800 text-sm mb-6">
-          <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-          <p>
-            ห้ามออกจากหน้าจอนี้โดยเด็ดขาด ระบบจะทำการล็อกหน้าจอทันทีหากมีการสลับ
-            Tab หรือออกจาก Fullscreen
-          </p>
-        </div>
-
-        {exam.questions.map((q: any, idx: number) => (
-          <Card key={q.id} className="p-6 hover:shadow-md transition-shadow">
-            <div className="mb-6 flex gap-2 items-start">
-              <span className="font-bold text-lg text-blue-600 bg-blue-50 w-8 h-8 flex items-center justify-center rounded-full shrink-0">
-                {idx + 1}
-              </span>
-              <div className="space-y-1">
-                <p className="text-lg font-medium text-gray-900">
-                  {q.questionText}
-                </p>
-                <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-                  {q.score} คะแนน
-                </span>
-              </div>
+          <div className="w-1/4 flex justify-end items-center gap-4">
+            <div
+              className={`flex items-center gap-2 px-3 py-1 rounded-full border text-sm transition-colors ${
+                !isOnline
+                  ? "bg-amber-100 border-amber-200 text-amber-700"
+                  : "bg-gray-100 border-gray-200"
+              }`}
+            >
+              {!isOnline ? (
+                <>
+                  <WifiOff size={14} />
+                  <span>Offline ({pendingSync})</span>
+                </>
+              ) : saving ? (
+                <>
+                  <Loader2 size={12} className="animate-spin text-gray-500" />
+                  <span className="text-gray-500">Saving...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={14} className="text-green-600" />
+                  <span className="text-green-700">Saved</span>
+                </>
+              )}
             </div>
 
-            <RadioGroup
-              value={answers[q.id]?.toString()}
-              onValueChange={(val) => handleAnswer(q.id, Number(val))}
-              className="pl-10 space-y-3"
+            <Button
+              onClick={handleManualSubmit}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={!isOnline && pendingSync > 0}
             >
-              {q.choices.map((c: any) => (
-                <div
-                  key={c.id}
-                  className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-colors ${
-                    answers[q.id] === c.id
-                      ? "bg-blue-50 border-blue-200 ring-1 ring-blue-200"
-                      : "bg-white border-gray-200 hover:bg-gray-50"
-                  }`}
-                  onClick={() => handleAnswer(q.id, c.id)}
-                >
-                  <RadioGroupItem
-                    value={c.id.toString()}
-                    id={`c-${c.id}`}
-                    className="text-blue-600"
-                  />
-                  <Label
-                    htmlFor={`c-${c.id}`}
-                    className="flex-1 cursor-pointer font-normal text-gray-700 text-base"
-                  >
-                    {c.choiceText}
-                  </Label>
+              {!isOnline && pendingSync > 0 ? "รอสัญญาณเน็ต..." : "ส่งคำตอบ"}
+            </Button>
+          </div>
+        </header>
+
+        <main className="max-w-4xl mx-auto p-6 space-y-6">
+          <div className="bg-blue-50 border border-blue-100 rounded-lg p-4 flex gap-3 text-blue-800 text-sm mb-6">
+            <AlertTriangle size={18} className="shrink-0 mt-0.5" />
+            <p>
+              ห้ามออกจากหน้าจอนี้โดยเด็ดขาด
+              ระบบจะทำการล็อกหน้าจอทันทีหากมีการสลับ Tab หรือออกจาก Fullscreen
+            </p>
+          </div>
+
+          {exam.questions.map((q: any, idx: number) => (
+            <Card key={q.id} className="p-6 hover:shadow-md transition-shadow">
+              <div className="mb-6 flex gap-2 items-start">
+                <span className="font-bold text-lg text-blue-600 bg-blue-50 w-8 h-8 flex items-center justify-center rounded-full shrink-0">
+                  {idx + 1}
+                </span>
+                <div className="space-y-1">
+                  <p className="text-lg font-medium text-gray-900">
+                    {q.questionText}
+                  </p>
+                  <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                    {q.score} คะแนน
+                  </span>
                 </div>
-              ))}
-            </RadioGroup>
-          </Card>
-        ))}
-      </main>
-    </div>
+              </div>
+
+              <RadioGroup
+                value={answers[q.id]?.toString()}
+                onValueChange={(val) => handleAnswer(q.id, Number(val))}
+                className="pl-10 space-y-3"
+              >
+                {q.choices.map((c: any) => (
+                  <div
+                    key={c.id}
+                    className={`flex items-center space-x-3 p-4 rounded-lg border cursor-pointer transition-colors ${
+                      answers[q.id] === c.id
+                        ? "bg-blue-50 border-blue-200 ring-1 ring-blue-200"
+                        : "bg-white border-gray-200 hover:bg-gray-50"
+                    }`}
+                    onClick={() => handleAnswer(q.id, c.id)}
+                  >
+                    <RadioGroupItem
+                      value={c.id.toString()}
+                      id={`c-${c.id}`}
+                      className="text-blue-600"
+                    />
+                    <Label
+                      htmlFor={`c-${c.id}`}
+                      className="flex-1 cursor-pointer font-normal text-gray-700 text-base"
+                    >
+                      {c.choiceText}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </Card>
+          ))}
+        </main>
+      </div>
+    </AuthGuard>
   )
 }
