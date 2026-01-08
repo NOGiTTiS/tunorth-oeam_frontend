@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import axios from "axios"
-import * as XLSX from "xlsx" // ต้องมั่นใจว่ารัน bun add xlsx แล้ว
+import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,6 +18,9 @@ import {
   FileSpreadsheet,
   Upload,
   Download,
+  Image as ImageIcon,
+  X,
+  Edit,
 } from "lucide-react"
 import Link from "next/link"
 
@@ -25,45 +28,44 @@ import Link from "next/link"
 interface Choice {
   id?: number
   choiceText: string
+  text?: string // field ช่วยสำหรับ mapping
+  imageUrl?: string
   isCorrect: boolean
 }
 
 interface Question {
   id: number
   questionText: string
+  imageUrl?: string
   score: number
   choices: Choice[]
 }
 
-interface ExamDetail {
-  id: number
-  subjectName: string
-  title: string
-  questions: Question[]
-}
-
 export default function EditExamPage() {
   const params = useParams()
-  const router = useRouter()
   const examId = params.id
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const [exam, setExam] = useState<ExamDetail | null>(null)
+  const [exam, setExam] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  // State สำหรับฟอร์มเพิ่มโจทย์รายข้อ
+  // --- State สำหรับโหมดแก้ไข (Editing Mode) ---
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editForm, setEditForm] = useState<Question | null>(null)
+
+  // --- State สำหรับฟอร์มเพิ่มโจทย์ใหม่ (Create Mode) ---
   const [newQuestion, setNewQuestion] = useState({
     questionText: "",
+    imageUrl: "",
     score: 1,
     choices: [
-      { text: "", isCorrect: true },
-      { text: "", isCorrect: false },
-      { text: "", isCorrect: false },
-      { text: "", isCorrect: false },
+      { text: "", imageUrl: "", isCorrect: true },
+      { text: "", imageUrl: "", isCorrect: false },
+      { text: "", imageUrl: "", isCorrect: false },
+      { text: "", imageUrl: "", isCorrect: false },
     ],
   })
 
-  // --- 1. Fetch Data ---
   useEffect(() => {
     fetchExamData()
   }, [examId])
@@ -73,69 +75,170 @@ export default function EditExamPage() {
       const res = await axios.get(`http://localhost:8000/exams/${examId}`)
       setExam(res.data)
     } catch (error) {
-      console.error("Error fetching exam:", error)
-      alert("ไม่สามารถดึงข้อมูลข้อสอบได้")
+      console.error(error)
     } finally {
       setLoading(false)
     }
   }
 
-  // --- 2. Single Question Form Logic ---
-  const handleChoiceChange = (index: number, val: string) => {
-    const updatedChoices = [...newQuestion.choices]
-    updatedChoices[index].text = val
-    setNewQuestion({ ...newQuestion, choices: updatedChoices })
+  // --- Image Upload ---
+  const handleImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    mode: "create" | "edit",
+    target: "question" | "choice",
+    choiceIndex?: number
+  ) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const formData = new FormData()
+    formData.append("file", file)
+
+    try {
+      const res = await axios.post("http://localhost:8000/upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
+      const url = res.data.url
+
+      if (mode === "create") {
+        if (target === "question")
+          setNewQuestion((prev) => ({ ...prev, imageUrl: url }))
+        else if (choiceIndex !== undefined) {
+          const updated = [...newQuestion.choices]
+          updated[choiceIndex].imageUrl = url
+          setNewQuestion((prev) => ({ ...prev, choices: updated }))
+        }
+      } else if (mode === "edit" && editForm) {
+        if (target === "question")
+          setEditForm((prev) => (prev ? { ...prev, imageUrl: url } : null))
+        else if (choiceIndex !== undefined) {
+          const updatedChoices = [...editForm.choices]
+          updatedChoices[choiceIndex] = {
+            ...updatedChoices[choiceIndex],
+            imageUrl: url,
+          }
+          setEditForm((prev) =>
+            prev ? { ...prev, choices: updatedChoices } : null
+          )
+        }
+      }
+    } catch (error) {
+      alert("Upload failed")
+    }
   }
 
-  const handleCorrectSelect = (index: number) => {
-    const updatedChoices = newQuestion.choices.map((c, i) => ({
+  // --- Create Logic ---
+  const handleCreateChoiceChange = (idx: number, val: string) => {
+    const updated = [...newQuestion.choices]
+    updated[idx].text = val
+    setNewQuestion({ ...newQuestion, choices: updated })
+  }
+  const handleCreateCorrect = (idx: number) => {
+    const updated = newQuestion.choices.map((c, i) => ({
       ...c,
-      isCorrect: i === index,
+      isCorrect: i === idx,
     }))
-    setNewQuestion({ ...newQuestion, choices: updatedChoices })
+    setNewQuestion({ ...newQuestion, choices: updated })
   }
-
   const handleAddQuestion = async () => {
-    if (!exam || !newQuestion.questionText) return alert("กรุณากรอกคำถาม")
-
+    if (!newQuestion.questionText) return alert("กรุณากรอกโจทย์")
     try {
       await axios.post("http://localhost:8000/questions", {
         examId: Number(examId),
-        questionText: newQuestion.questionText,
+        ...newQuestion,
         questionType: "MCQ",
-        score: newQuestion.score,
-        choices: newQuestion.choices,
       })
-
-      // Reset Form
       setNewQuestion({
         questionText: "",
+        imageUrl: "",
         score: 1,
         choices: [
-          { text: "", isCorrect: true },
-          { text: "", isCorrect: false },
-          { text: "", isCorrect: false },
-          { text: "", isCorrect: false },
+          { text: "", imageUrl: "", isCorrect: true },
+          { text: "", imageUrl: "", isCorrect: false },
+          { text: "", imageUrl: "", isCorrect: false },
+          { text: "", imageUrl: "", isCorrect: false },
         ],
       })
       fetchExamData()
-    } catch (error) {
-      console.error(error)
-      alert("เพิ่มโจทย์ไม่สำเร็จ")
+    } catch (e) {
+      alert("เพิ่มไม่สำเร็จ")
+    }
+  }
+
+  // --- Edit Logic ---
+  const startEditing = (question: Question) => {
+    setEditingId(question.id)
+    setEditForm({
+      ...question,
+      choices: question.choices.map((c) => ({ ...c, text: c.choiceText })),
+    })
+  }
+
+  const cancelEditing = () => {
+    setEditingId(null)
+    setEditForm(null)
+  }
+
+  const handleEditChoiceChange = (idx: number, val: string) => {
+    if (!editForm) return
+    const updated = [...editForm.choices]
+    updated[idx].text = val
+    updated[idx].choiceText = val
+    setEditForm({ ...editForm, choices: updated })
+  }
+
+  const handleEditCorrect = (idx: number) => {
+    if (!editForm) return
+    const updated = editForm.choices.map((c, i) => ({
+      ...c,
+      isCorrect: i === idx,
+    }))
+    setEditForm({ ...editForm, choices: updated })
+  }
+
+  const handleUpdateQuestion = async () => {
+    if (!editForm || !editForm.questionText) return alert("ข้อมูลไม่ครบ")
+
+    try {
+      const payload = {
+        questionText: editForm.questionText,
+        score: Number(editForm.score),
+        // แก้ตรงนี้: ถ้าเป็น null ให้ส่ง "" (String ว่าง) แทน
+        imageUrl: editForm.imageUrl || "",
+        choices: editForm.choices.map((c) => ({
+          id: c.id,
+          text: c.text || c.choiceText,
+          // แก้ตรงนี้เช่นกัน: ป้องกัน null
+          imageUrl: c.imageUrl || "",
+          isCorrect: c.isCorrect,
+        })),
+      }
+
+      await axios.put(`http://localhost:8000/questions/${editForm.id}`, payload)
+
+      alert("แก้ไขสำเร็จ")
+      setEditingId(null)
+      fetchExamData()
+    } catch (e: any) {
+      // ปรับปรุงการแสดง Error ให้ชัดเจนขึ้น
+      console.error("Update Error:", e.response?.data)
+      const errorMsg = e.response?.data?.message || e.message
+      alert(
+        `แก้ไขไม่สำเร็จ: ${
+          typeof errorMsg === "object" ? JSON.stringify(errorMsg) : errorMsg
+        }`
+      )
     }
   }
 
   const handleDeleteQuestion = async (qId: number) => {
-    if (!confirm("ต้องการลบข้อนี้ใช่หรือไม่?")) return
-    try {
-      await axios.delete(`http://localhost:8000/questions/${qId}`)
-      fetchExamData()
-    } catch (error) {
-      alert("ลบไม่สำเร็จ")
-    }
+    if (!confirm("ลบข้อนี้?")) return
+    await axios.delete(`http://localhost:8000/questions/${qId}`)
+    fetchExamData()
   }
 
-  // --- 3. Excel Import Logic ---
+  // --- Import Logic ---
+  // *** ฟังก์ชันนี้แหละครับที่หายไป นำกลับมาแล้ว ***
   const downloadTemplate = () => {
     const ws = XLSX.utils.json_to_sheet([
       {
@@ -172,44 +275,60 @@ export default function EditExamPage() {
       const wb = XLSX.read(bstr, { type: "binary" })
       const wsname = wb.SheetNames[0]
       const ws = wb.Sheets[wsname]
-      const data: any[] = XLSX.utils.sheet_to_json(ws)
 
-      if (data.length === 0) {
+      // 1. อ่านข้อมูลมาเป็น JSON
+      const rawData: any[] = XLSX.utils.sheet_to_json(ws)
+
+      if (rawData.length === 0) {
         alert("ไฟล์ไม่มีข้อมูล")
         return
       }
 
-      // Transform Data
-      const formattedQuestions = data.map((row) => {
-        const correctChar = row["ข้อที่ถูก (A/B/C/D)"]
-          ?.toString()
-          .toUpperCase()
-          .trim()
-        return {
-          questionText: row["คำถาม"],
-          score: Number(row["คะแนน"]) || 1,
-          choices: [
-            {
-              text: row["ตัวเลือก A"]?.toString() || "",
-              isCorrect: correctChar === "A",
-            },
-            {
-              text: row["ตัวเลือก B"]?.toString() || "",
-              isCorrect: correctChar === "B",
-            },
-            {
-              text: row["ตัวเลือก C"]?.toString() || "",
-              isCorrect: correctChar === "C",
-            },
-            {
-              text: row["ตัวเลือก D"]?.toString() || "",
-              isCorrect: correctChar === "D",
-            },
-          ].filter((c) => c.text !== ""), // Remove empty choices
-        }
-      })
+      // 2. แปลงข้อมูลและกรองแถวเสีย (Sanitize)
+      const formattedQuestions = rawData
+        // กรองแถวที่ไม่มี "คำถาม" ทิ้งไป (แก้ปัญหาแถวว่างใน Excel)
+        .filter((row) => row["คำถาม"] && row["คำถาม"].toString().trim() !== "")
+        .map((row) => {
+          const correctChar = row["ข้อที่ถูก (A/B/C/D)"]
+            ?.toString()
+            .toUpperCase()
+            .trim()
 
-      // Send to Backend
+          return {
+            // แปลงเป็น String เสมอ เพื่อกัน Error 422
+            questionText: row["คำถาม"]?.toString() || "",
+
+            // แปลงคะแนน ถ้าไม่มีให้เป็น 1
+            score: Number(row["คะแนน"]) || 1,
+
+            // สร้าง Choices
+            choices: [
+              {
+                text: row["ตัวเลือก A"]?.toString() || "",
+                isCorrect: correctChar === "A",
+              },
+              {
+                text: row["ตัวเลือก B"]?.toString() || "",
+                isCorrect: correctChar === "B",
+              },
+              {
+                text: row["ตัวเลือก C"]?.toString() || "",
+                isCorrect: correctChar === "C",
+              },
+              {
+                text: row["ตัวเลือก D"]?.toString() || "",
+                isCorrect: correctChar === "D",
+              },
+            ].filter((c) => c.text.trim() !== ""), // กรอง Choice ว่างทิ้ง
+          }
+        })
+
+      if (formattedQuestions.length === 0) {
+        alert("ไม่พบข้อมูลคำถามที่ถูกต้องในไฟล์")
+        return
+      }
+
+      // 3. ส่งไป Backend
       try {
         await axios.post("http://localhost:8000/questions/bulk", {
           examId: Number(examId),
@@ -218,8 +337,8 @@ export default function EditExamPage() {
         alert(`นำเข้าสำเร็จ ${formattedQuestions.length} ข้อ`)
         fetchExamData()
       } catch (error) {
-        console.error(error)
-        alert("เกิดข้อผิดพลาดในการนำเข้า กรุณาตรวจสอบไฟล์ Excel")
+        console.error("Import Error:", error)
+        alert("เกิดข้อผิดพลาด: ข้อมูลในไฟล์ไม่ถูกต้องตามรูปแบบ")
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = ""
       }
@@ -227,10 +346,7 @@ export default function EditExamPage() {
     reader.readAsBinaryString(file)
   }
 
-  // --- Render ---
-  if (loading) return <div className="p-8 text-center">Loading...</div>
-  if (!exam)
-    return <div className="p-8 text-center text-red-500">Exam not found</div>
+  if (loading) return <div>Loading...</div>
 
   return (
     <div className="space-y-6 pb-20">
@@ -242,29 +358,22 @@ export default function EditExamPage() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">
-            {exam.subjectName}
-          </h1>
-          <p className="text-gray-500">{exam.title}</p>
+          <h1 className="text-2xl font-bold">{exam?.subjectName}</h1>
+          <p className="text-gray-500">{exam?.title}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* --- LEFT COLUMN --- */}
+        {/* --- LEFT: Create Form & Import --- */}
         <div className="lg:col-span-1 space-y-6">
-          {/* 1. Import Card */}
-          <Card className="border-green-200 shadow-sm bg-green-50/30">
-            <CardHeader className="bg-green-100/50 py-3 border-b border-green-200">
-              <CardTitle className="text-green-800 text-base flex items-center gap-2">
-                <FileSpreadsheet size={18} /> นำเข้าจาก Excel
-              </CardTitle>
-            </CardHeader>
+          {/* Import Card */}
+          <Card className="border-green-200 bg-green-50/30">
             <CardContent className="pt-4 space-y-3">
               <Button
                 variant="outline"
                 size="sm"
                 className="w-full bg-white text-green-700 border-green-200 hover:bg-green-50"
-                onClick={downloadTemplate}
+                onClick={downloadTemplate} // ตรงนี้จะไม่ error แล้วครับ
               >
                 <Download size={14} className="mr-2" /> 1. ดาวน์โหลดไฟล์ตัวอย่าง
               </Button>
@@ -272,10 +381,10 @@ export default function EditExamPage() {
               <div className="relative">
                 <input
                   type="file"
-                  accept=".xlsx, .xls"
                   ref={fileInputRef}
                   className="hidden"
                   onChange={handleFileUpload}
+                  accept=".xlsx"
                 />
                 <Button
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
@@ -285,23 +394,22 @@ export default function EditExamPage() {
                 </Button>
               </div>
               <p className="text-[10px] text-gray-500 text-center">
-                รองรับไฟล์ .xlsx / .xls ตามรูปแบบ Template
+                รองรับไฟล์ .xlsx ตามรูปแบบ Template
               </p>
             </CardContent>
           </Card>
 
-          {/* 2. Add Question Form */}
+          {/* Create Form */}
           <Card className="border-blue-200 shadow-md sticky top-6">
-            <CardHeader className="bg-blue-50 border-b border-blue-100">
-              <CardTitle className="text-blue-800 flex items-center gap-2 text-lg">
-                <Plus size={20} /> เพิ่มโจทย์ทีละข้อ
+            <CardHeader className="bg-blue-50 py-3">
+              <CardTitle className="text-blue-800 text-lg flex items-center gap-2">
+                <Plus size={20} /> เพิ่มโจทย์ใหม่
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 pt-4">
               <div>
                 <Label>คำถาม</Label>
                 <Textarea
-                  placeholder="พิมพ์โจทย์ที่นี่..."
                   value={newQuestion.questionText}
                   onChange={(e) =>
                     setNewQuestion({
@@ -309,15 +417,42 @@ export default function EditExamPage() {
                       questionText: e.target.value,
                     })
                   }
-                  className="min-h-[100px] resize-none"
                 />
+                <div className="mt-2">
+                  {newQuestion.imageUrl ? (
+                    <div className="relative w-fit">
+                      <img
+                        src={newQuestion.imageUrl}
+                        className="h-24 rounded border"
+                      />
+                      <button
+                        onClick={() =>
+                          setNewQuestion({ ...newQuestion, imageUrl: "" })
+                        }
+                        className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="cursor-pointer text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded flex w-fit gap-1">
+                      <ImageIcon size={14} /> เพิ่มรูป{" "}
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept="image/*"
+                        onChange={(e) =>
+                          handleImageUpload(e, "create", "question")
+                        }
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
-
               <div>
                 <Label>คะแนน</Label>
                 <Input
                   type="number"
-                  min={1}
                   value={newQuestion.score}
                   onChange={(e) =>
                     setNewQuestion({
@@ -327,121 +462,276 @@ export default function EditExamPage() {
                   }
                 />
               </div>
-
-              <div className="space-y-3">
-                <Label>ตัวเลือก (เลือกข้อที่ถูก)</Label>
-                {newQuestion.choices.map((choice, idx) => (
+              <div className="space-y-2">
+                {newQuestion.choices.map((c, idx) => (
                   <div key={idx} className="flex items-center gap-2">
                     <input
                       type="radio"
-                      name="correctChoice"
-                      checked={choice.isCorrect}
-                      onChange={() => handleCorrectSelect(idx)}
-                      className="w-4 h-4 text-blue-600 cursor-pointer shrink-0"
+                      name="newCorrect"
+                      checked={c.isCorrect}
+                      onChange={() => handleCreateCorrect(idx)}
+                      className="w-4 h-4"
                     />
                     <Input
-                      placeholder={`ตัวเลือกที่ ${idx + 1}`}
-                      value={choice.text}
-                      onChange={(e) => handleChoiceChange(idx, e.target.value)}
-                      className={
-                        choice.isCorrect
-                          ? "border-green-500 ring-1 ring-green-200 bg-green-50"
-                          : ""
+                      value={c.text}
+                      onChange={(e) =>
+                        handleCreateChoiceChange(idx, e.target.value)
                       }
+                      placeholder={`ตัวเลือก ${idx + 1}`}
                     />
+                    <label className="cursor-pointer text-gray-400 hover:text-blue-600">
+                      <ImageIcon size={16} />
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) =>
+                          handleImageUpload(e, "create", "choice", idx)
+                        }
+                      />
+                    </label>
                   </div>
                 ))}
               </div>
-
               <Button
                 onClick={handleAddQuestion}
-                className="w-full bg-blue-600 hover:bg-blue-700 mt-2"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white mt-2"
               >
-                <Save size={16} className="mr-2" /> บันทึกโจทย์
+                บันทึกโจทย์
               </Button>
             </CardContent>
           </Card>
         </div>
 
-        {/* --- RIGHT COLUMN --- */}
+        {/* --- RIGHT: List (View & Edit Mode) --- */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex justify-between items-center mb-2">
-            <h2 className="text-xl font-bold text-gray-800">
-              รายการโจทย์ ({exam.questions.length} ข้อ)
-            </h2>
-            <div className="text-sm text-gray-500">
-              คะแนนรวม: {exam.questions.reduce((sum, q) => sum + q.score, 0)}{" "}
-              คะแนน
-            </div>
-          </div>
+          <h2 className="font-bold text-xl">
+            รายการโจทย์ ({exam?.questions.length})
+          </h2>
 
-          {exam.questions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200 text-gray-400">
-              <FileSpreadsheet size={48} className="mb-4 opacity-20" />
-              <p>ยังไม่มีโจทย์</p>
-              <p className="text-sm">
-                เพิ่มโจทย์ทางด้านซ้าย หรือ Import จาก Excel
-              </p>
-            </div>
-          ) : (
-            exam.questions.map((q, index) => (
-              <Card
-                key={q.id}
-                className="relative group hover:shadow-md transition-shadow border-gray-200"
-              >
-                <CardContent className="pt-6">
-                  {/* Delete Button (Hidden by default, shown on hover) */}
-                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+          {exam?.questions.map((q: any, idx: number) => (
+            <Card
+              key={q.id}
+              className={`transition-all ${
+                editingId === q.id
+                  ? "ring-2 ring-blue-500 shadow-lg"
+                  : "hover:shadow-md"
+              }`}
+            >
+              {/* === EDIT MODE === */}
+              {editingId === q.id && editForm ? (
+                <CardContent className="pt-6 space-y-4 bg-blue-50/20">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="font-bold text-blue-700">
+                      กำลังแก้ไขข้อที่ {idx + 1}
+                    </span>
                     <Button
-                      variant="destructive"
+                      variant="ghost"
+                      size="sm"
+                      onClick={cancelEditing}
+                      className="text-gray-500"
+                    >
+                      <X size={16} /> ยกเลิก
+                    </Button>
+                  </div>
+
+                  {/* Edit Question Text & Image */}
+                  <div>
+                    <Label>โจทย์</Label>
+                    <Textarea
+                      value={editForm.questionText}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          questionText: e.target.value,
+                        })
+                      }
+                    />
+                    <div className="mt-2">
+                      {editForm.imageUrl ? (
+                        <div className="relative w-fit">
+                          <img
+                            src={editForm.imageUrl}
+                            className="h-32 rounded border"
+                          />
+                          <button
+                            onClick={() =>
+                              setEditForm({ ...editForm, imageUrl: "" })
+                            }
+                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="cursor-pointer text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded flex w-fit gap-1">
+                          <ImageIcon size={14} /> เพิ่มรูปโจทย์{" "}
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={(e) =>
+                              handleImageUpload(e, "edit", "question")
+                            }
+                          />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label>คะแนน</Label>
+                    <Input
+                      type="number"
+                      value={editForm.score}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          score: Number(e.target.value),
+                        })
+                      }
+                      className="w-24"
+                    />
+                  </div>
+
+                  {/* Edit Choices */}
+                  <div className="space-y-2">
+                    {editForm.choices.map((c, cIdx) => (
+                      <div
+                        key={c.id}
+                        className="flex flex-col gap-1 p-2 border rounded bg-white"
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name={`editCorrect-${q.id}`}
+                            checked={c.isCorrect}
+                            onChange={() => handleEditCorrect(cIdx)}
+                            className="w-4 h-4 cursor-pointer"
+                          />
+                          <Input
+                            value={c.text}
+                            onChange={(e) =>
+                              handleEditChoiceChange(cIdx, e.target.value)
+                            }
+                          />
+                          <label className="cursor-pointer text-gray-400 hover:text-blue-600">
+                            <ImageIcon size={18} />
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) =>
+                                handleImageUpload(e, "edit", "choice", cIdx)
+                              }
+                            />
+                          </label>
+                        </div>
+                        {c.imageUrl && (
+                          <div className="relative w-fit ml-6">
+                            <img
+                              src={c.imageUrl}
+                              className="h-16 rounded border"
+                            />
+                            <button
+                              onClick={() => {
+                                const updated = [...editForm.choices]
+                                updated[cIdx].imageUrl = ""
+                                setEditForm({ ...editForm, choices: updated })
+                              }}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex gap-2 justify-end">
+                    <Button variant="outline" onClick={cancelEditing}>
+                      ยกเลิก
+                    </Button>
+                    <Button
+                      onClick={handleUpdateQuestion}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      <Save size={16} className="mr-2" /> บันทึกการแก้ไข
+                    </Button>
+                  </div>
+                </CardContent>
+              ) : (
+                /* === VIEW MODE === */
+                <CardContent className="pt-6 relative group">
+                  <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
                       size="icon"
-                      className="h-8 w-8"
+                      variant="outline"
+                      onClick={() => startEditing(q)}
+                      title="แก้ไข"
+                    >
+                      <Edit size={16} className="text-blue-600" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="destructive"
                       onClick={() => handleDeleteQuestion(q.id)}
+                      title="ลบ"
                     >
                       <Trash2 size={16} />
                     </Button>
                   </div>
 
-                  <div className="flex gap-4 mb-4">
-                    <div className="bg-gray-100 text-gray-500 font-bold text-lg w-10 h-10 flex items-center justify-center rounded-full shrink-0">
-                      {index + 1}
+                  <div className="flex gap-4 mb-4 items-start">
+                    <div className="bg-gray-100 text-gray-500 font-bold w-8 h-8 flex items-center justify-center rounded-full shrink-0">
+                      {idx + 1}
                     </div>
-                    <div className="flex-1">
-                      <p className="font-medium text-lg mb-2 text-gray-900">
+                    <div className="space-y-2 flex-1">
+                      <p className="font-medium text-lg whitespace-pre-line">
                         {q.questionText}
                       </p>
-                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded font-medium">
+                      {q.imageUrl && (
+                        <img
+                          src={q.imageUrl}
+                          className="max-h-48 rounded border object-contain"
+                        />
+                      )}
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
                         {q.score} คะแนน
                       </span>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-14">
-                    {q.choices.map((c) => (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-12">
+                    {q.choices.map((c: Choice) => (
                       <div
                         key={c.id}
-                        className={`p-3 rounded-md border text-sm flex items-center gap-2 ${
+                        className={`p-2 rounded border text-sm flex items-center gap-2 ${
                           c.isCorrect
-                            ? "bg-green-50 border-green-200 text-green-800 font-medium"
-                            : "bg-white border-gray-100 text-gray-600"
+                            ? "bg-green-50 border-green-200"
+                            : "bg-white"
                         }`}
                       >
                         {c.isCorrect ? (
-                          <CheckCircle2
-                            size={16}
-                            className="text-green-600 shrink-0"
-                          />
+                          <CheckCircle2 size={16} className="text-green-600" />
                         ) : (
-                          <div className="w-4 h-4 rounded-full border border-gray-300 shrink-0"></div>
+                          <div className="w-4 h-4 rounded-full border" />
                         )}
-                        {c.choiceText}
+                        <div className="flex flex-col">
+                          <span>{c.choiceText}</span>
+                          {c.imageUrl && (
+                            <img
+                              src={c.imageUrl}
+                              className="h-16 mt-1 rounded border object-contain bg-white"
+                            />
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
                 </CardContent>
-              </Card>
-            ))
-          )}
+              )}
+            </Card>
+          ))}
         </div>
       </div>
     </div>

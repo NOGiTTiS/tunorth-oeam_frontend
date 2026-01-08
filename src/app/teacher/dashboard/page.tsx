@@ -13,6 +13,7 @@ import {
   BarChart3,
   Clock,
   CalendarClock, // เพิ่ม icon นี้
+  Settings,
 } from "lucide-react"
 
 interface Exam {
@@ -137,6 +138,7 @@ export default function TeacherDashboard() {
 
               {/* Action Buttons Grid */}
               <div className="grid grid-cols-2 gap-2">
+                {/* [MODIFIED] ปุ่มแก้ไขเดิม เปลี่ยนเป็น "แก้ไขโจทย์" */}
                 <Link
                   href={`/teacher/exams/${exam.id}/edit`}
                   className="w-full"
@@ -146,18 +148,23 @@ export default function TeacherDashboard() {
                     size="sm"
                     className="w-full gap-1 hover:bg-gray-50"
                   >
-                    <Edit size={14} /> แก้ไขโจทย์
+                    <Edit size={14} /> โจทย์
                   </Button>
                 </Link>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => deleteExam(exam.id)}
-                  className="w-full gap-1 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-100"
+                {/* [NEW] เพิ่มปุ่มแก้ไขรายละเอียด (Settings) */}
+                <Link
+                  href={`/teacher/exams/${exam.id}/settings`}
+                  className="w-full"
                 >
-                  <Trash2 size={14} /> ลบ
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-1 hover:bg-gray-50"
+                  >
+                    <Settings size={14} /> ตั้งค่า
+                  </Button>
+                </Link>
 
                 <Link
                   href={`/teacher/exams/${exam.id}/monitor`}
@@ -172,6 +179,7 @@ export default function TeacherDashboard() {
                   </Button>
                 </Link>
 
+                {/* [NEW] เพิ่มปุ่มผลสอบ */}
                 <Link
                   href={`/teacher/exams/${exam.id}/results`}
                   className="w-full"
@@ -184,6 +192,16 @@ export default function TeacherDashboard() {
                     <BarChart3 size={14} /> ผลสอบ
                   </Button>
                 </Link>
+
+                {/* [MODIFIED] ปุ่มลบเดิม เปลี่ยนเป็น "ลบ" */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => deleteExam(exam.id)}
+                  className="w-full gap-1 text-red-600 hover:bg-red-50 hover:text-red-700 border-red-100"
+                >
+                  <Trash2 size={14} /> ลบ
+                </Button>
               </div>
             </CardContent>
           </Card>
