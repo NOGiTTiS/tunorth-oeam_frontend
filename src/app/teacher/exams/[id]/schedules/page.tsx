@@ -115,7 +115,7 @@ export default function ExamSchedulesPage() {
               <div>
                 <Label>ห้องเรียน (ใส่หลายห้องคั่นด้วย comma)</Label>
                 <Input
-                  placeholder="เช่น 6.1, 6.2"
+                  placeholder="เช่น 6/1, 6/2"
                   value={classRoomInput}
                   onChange={(e) => setClassRoomInput(e.target.value)}
                   required

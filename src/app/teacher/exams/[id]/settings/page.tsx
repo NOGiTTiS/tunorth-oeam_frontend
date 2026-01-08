@@ -22,6 +22,7 @@ export default function EditExamSettingsPage() {
     durationMinutes: 60,
     isRandomQuestion: false,
     isRandomChoice: false,
+    showScore: false, // State สำหรับ Checkbox
   })
 
   // 1. โหลดข้อมูลเดิม
@@ -36,6 +37,7 @@ export default function EditExamSettingsPage() {
           durationMinutes: data.durationMinutes,
           isRandomQuestion: data.isRandomQuestion,
           isRandomChoice: data.isRandomChoice,
+          showScore: data.showScore, // รับค่าเดิม
         })
       } catch (error) {
         alert("โหลดข้อมูลไม่สำเร็จ")
@@ -57,7 +59,7 @@ export default function EditExamSettingsPage() {
       })
 
       alert("บันทึกข้อมูลเรียบร้อย")
-      router.push("/teacher/dashboard") // กลับ Dashboard หรือไปหน้า Edit โจทย์ต่อก็ได้
+      router.push("/teacher/dashboard")
     } catch (error) {
       console.error(error)
       alert("แก้ไขไม่สำเร็จ")
@@ -128,6 +130,7 @@ export default function EditExamSettingsPage() {
               </div>
             </div>
 
+            {/* Randomization */}
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
               <h3 className="font-semibold text-gray-700 flex items-center gap-2">
                 <Shuffle size={16} /> การสุ่ม (Randomization)
@@ -168,6 +171,35 @@ export default function EditExamSettingsPage() {
                   </Label>
                 </div>
               </div>
+            </div>
+
+            {/* [NEW] Score Settings */}
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 space-y-3">
+              <h3 className="font-semibold text-yellow-800 flex items-center gap-2">
+                📢 การประกาศผลสอบ
+              </h3>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="checkbox"
+                  id="showScore"
+                  className="w-5 h-5 cursor-pointer accent-yellow-600"
+                  checked={formData.showScore}
+                  onChange={(e) =>
+                    setFormData({ ...formData, showScore: e.target.checked })
+                  }
+                />
+                <Label
+                  htmlFor="showScore"
+                  className="cursor-pointer font-normal text-yellow-900"
+                >
+                  อนุญาตให้นักเรียนเห็นคะแนนสอบ (Show Score)
+                </Label>
+              </div>
+              <p className="text-xs text-yellow-700 ml-8">
+                * หากเปิดใช้งาน
+                นักเรียนจะเห็นคะแนนของตนเองทันทีหลังจากกดส่งข้อสอบ
+                หรือเมื่อเข้ามาดูที่หน้า Dashboard
+              </p>
             </div>
 
             <Button
