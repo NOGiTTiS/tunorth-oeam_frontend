@@ -44,10 +44,9 @@ export default function AdminLayout({
               <Link href="/admin/dashboard">
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="text-gray-600 hover:text-blue-600"
+                  className="text-white hover:bg-slate-800 gap-2"
                 >
-                  <LayoutDashboard size={16} className="mr-2" /> Dashboard
+                  <LayoutDashboard size={16} /> Dashboard
                 </Button>
               </Link>
               <Link href="/admin/users">

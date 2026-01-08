@@ -69,10 +69,8 @@ export default function ExamRoomPage() {
     const heartbeatInterval = setInterval(async () => {
       try {
         await axios.get("http://localhost:8000/", { timeout: 2000 })
-        // ถ้า request สำเร็จ แต่ state เป็น offline -> ให้กลับมา online
         if (!isOnlineRef.current) updateOnlineStatus(true)
       } catch (error) {
-        // ถ้า request ล้มเหลว -> ให้ถือว่า offline
         if (isOnlineRef.current) {
           console.log("Heartbeat failed. Going offline.")
           updateOnlineStatus(false)
@@ -130,11 +128,10 @@ export default function ExamRoomPage() {
         )
         setExamData(res.data)
 
-        // เช็ค Locked Status จาก DB (กัน F5)
         if (res.data.status === "LOCKED") {
           setIsLocked(true)
           setCanResume(false)
-          setIsStarted(true) // ถ้าโดนล็อก แสดงว่าเริ่มไปแล้ว
+          setIsStarted(true)
         }
 
         const savedAnswers: Record<number, number> = {}
@@ -142,7 +139,6 @@ export default function ExamRoomPage() {
           savedAnswers[ans.questionId] = ans.selectedChoiceId
         })
 
-        // Merge Offline Queue
         const queue = JSON.parse(
           localStorage.getItem(`offline_queue_${sessionId}`) || "[]"
         )
@@ -164,9 +160,9 @@ export default function ExamRoomPage() {
     }
   }, [sessionId, router])
 
-  // --- 3. Security Logic (Anti-Cheat & Anti-Copy) ---
+  // --- 3. Security Logic ---
   useEffect(() => {
-    // 3.1 Anti-Copy / Paste / ContextMenu
+    // Anti-Copy / Paste / ContextMenu
     const preventAction = (e: Event) => {
       e.preventDefault()
       e.stopPropagation()
@@ -174,7 +170,6 @@ export default function ExamRoomPage() {
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Prevent F12, Ctrl+C, Ctrl+V, etc.
       if (e.key === "F12") e.preventDefault()
       if (
         (e.ctrlKey || e.metaKey) &&
@@ -191,7 +186,6 @@ export default function ExamRoomPage() {
     document.addEventListener("paste", preventAction)
     document.addEventListener("keydown", handleKeyDown)
 
-    // 3.2 Fullscreen & Tab Switching Monitoring
     if (!examData || !isStarted) return
 
     const { exam, studentId, student } = examData
@@ -305,7 +299,27 @@ export default function ExamRoomPage() {
       )
       return
     }
-    if (!confirm("ยืนยันการส่งข้อสอบ?")) return
+
+    // [MODIFIED] ตรวจสอบว่าทำครบทุกข้อหรือไม่
+    if (examData) {
+      const totalQuestions = examData.exam.questions.length
+      const answeredCount = Object.keys(answers).length
+
+      if (answeredCount < totalQuestions) {
+        const unanswered = totalQuestions - answeredCount
+        const confirmIncomplete = confirm(
+          `⚠️ คุณยังทำข้อสอบไม่ครบ ${unanswered} ข้อ\n\nยืนยันที่จะส่งข้อสอบเลยหรือไม่?`
+        )
+        if (!confirmIncomplete) return // กดยกเลิก ก็ไม่ต้องส่ง
+      } else {
+        // ทำครบแล้ว ถามยืนยันปกติ
+        if (!confirm("ยืนยันการส่งข้อสอบ?")) return
+      }
+    } else {
+      // Fallback กรณีโหลดข้อมูลไม่ทัน (ไม่น่าเกิด)
+      if (!confirm("ยืนยันการส่งข้อสอบ?")) return
+    }
+
     await syncAnswers()
     try {
       await axios.post("http://localhost:8000/take/submit", {
@@ -468,7 +482,6 @@ export default function ExamRoomPage() {
                 <p className="text-lg font-medium text-gray-900 whitespace-pre-line pointer-events-none">
                   {q.questionText}
                 </p>
-                {/* Image Support */}
                 {q.imageUrl && (
                   <img
                     src={q.imageUrl}
@@ -485,7 +498,6 @@ export default function ExamRoomPage() {
             </div>
 
             <RadioGroup
-              // Fix Uncontrolled Component Error
               value={answers[q.id]?.toString() ?? ""}
               onValueChange={(val) => handleAnswer(q.id, Number(val))}
               className="pl-10 space-y-3"
