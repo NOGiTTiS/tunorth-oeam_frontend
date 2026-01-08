@@ -18,6 +18,7 @@ import {
   WifiOff,
   RefreshCw,
   Maximize,
+  CheckCircle,
 } from "lucide-react"
 
 import { ExamTimer } from "@/components/ExamTimer"
@@ -47,12 +48,12 @@ export default function ExamRoomPage() {
   const [warnings, setWarnings] = useState(0)
   const [canResume, setCanResume] = useState(false)
 
-  // [NEW] State: รอ User กดเริ่มเพื่อเข้า Fullscreen
+  // Start State (User Gesture)
   const [isStarted, setIsStarted] = useState(false)
 
   const isOnlineRef = useRef(true)
 
-  // --- 1. Offline / Online Logic ---
+  // --- 1. Offline / Online Logic (Heartbeat) ---
   useEffect(() => {
     isOnlineRef.current = isOnline
   }, [isOnline])
@@ -64,11 +65,14 @@ export default function ExamRoomPage() {
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
 
+    // Active Heartbeat Check (Every 3s)
     const heartbeatInterval = setInterval(async () => {
       try {
         await axios.get("http://localhost:8000/", { timeout: 2000 })
+        // ถ้า request สำเร็จ แต่ state เป็น offline -> ให้กลับมา online
         if (!isOnlineRef.current) updateOnlineStatus(true)
       } catch (error) {
+        // ถ้า request ล้มเหลว -> ให้ถือว่า offline
         if (isOnlineRef.current) {
           console.log("Heartbeat failed. Going offline.")
           updateOnlineStatus(false)
@@ -125,16 +129,20 @@ export default function ExamRoomPage() {
           `http://localhost:8000/take/session/${sessionId}`
         )
         setExamData(res.data)
+
+        // เช็ค Locked Status จาก DB (กัน F5)
         if (res.data.status === "LOCKED") {
           setIsLocked(true)
           setCanResume(false)
           setIsStarted(true) // ถ้าโดนล็อก แสดงว่าเริ่มไปแล้ว
         }
+
         const savedAnswers: Record<number, number> = {}
         res.data.answers.forEach((ans: any) => {
           savedAnswers[ans.questionId] = ans.selectedChoiceId
         })
 
+        // Merge Offline Queue
         const queue = JSON.parse(
           localStorage.getItem(`offline_queue_${sessionId}`) || "[]"
         )
@@ -145,7 +153,7 @@ export default function ExamRoomPage() {
         setAnswers(savedAnswers)
         if (navigator.onLine && !socket.connected) socket.connect()
       } catch (e) {
-        alert("ไม่สามารถโหลดข้อสอบได้")
+        alert("ไม่สามารถโหลดข้อสอบได้ หรือ Session หมดอายุ")
       } finally {
         setLoading(false)
       }
@@ -156,9 +164,35 @@ export default function ExamRoomPage() {
     }
   }, [sessionId, router])
 
-  // --- 3. Security Logic ---
+  // --- 3. Security Logic (Anti-Cheat & Anti-Copy) ---
   useEffect(() => {
-    if (!examData || !isStarted) return // [FIX] เริ่มทำงานเมื่อ isStarted = true เท่านั้น
+    // 3.1 Anti-Copy / Paste / ContextMenu
+    const preventAction = (e: Event) => {
+      e.preventDefault()
+      e.stopPropagation()
+      return false
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent F12, Ctrl+C, Ctrl+V, etc.
+      if (e.key === "F12") e.preventDefault()
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        ["c", "v", "x", "a", "p", "s", "u"].includes(e.key.toLowerCase())
+      ) {
+        e.preventDefault()
+      }
+    }
+
+    document.addEventListener("contextmenu", preventAction)
+    document.addEventListener("selectstart", preventAction)
+    document.addEventListener("copy", preventAction)
+    document.addEventListener("cut", preventAction)
+    document.addEventListener("paste", preventAction)
+    document.addEventListener("keydown", handleKeyDown)
+
+    // 3.2 Fullscreen & Tab Switching Monitoring
+    if (!examData || !isStarted) return
 
     const { exam, studentId, student } = examData
     if (isOnline) socket.emit("join_exam_room", exam.id)
@@ -184,7 +218,6 @@ export default function ExamRoomPage() {
       if (document.hidden) reportCheating("TAB_SWITCH")
     }
     const handleFullscreenChange = () => {
-      // ถ้าออกจาก Fullscreen โดยที่ไม่ได้ถูกล็อก และเริ่มสอบแล้ว -> โกง
       if (!document.fullscreenElement && !isLocked && isStarted) {
         reportCheating("EXIT_FULLSCREEN")
       }
@@ -198,22 +231,25 @@ export default function ExamRoomPage() {
     })
 
     return () => {
+      document.removeEventListener("contextmenu", preventAction)
+      document.removeEventListener("selectstart", preventAction)
+      document.removeEventListener("copy", preventAction)
+      document.removeEventListener("cut", preventAction)
+      document.removeEventListener("paste", preventAction)
+      document.removeEventListener("keydown", handleKeyDown)
       document.removeEventListener("visibilitychange", handleVisibilityChange)
       document.removeEventListener("fullscreenchange", handleFullscreenChange)
       socket.off("force_unlock")
     }
-  }, [examData, isLocked, isOnline, isStarted]) // เพิ่ม isStarted
+  }, [examData, isLocked, isOnline, isStarted])
 
   // --- 4. Handlers ---
-
-  // [NEW] ฟังก์ชันเริ่มสอบและเข้า Fullscreen (เรียกจากปุ่มคลิก)
   const handleUserStart = async () => {
     try {
       await document.documentElement.requestFullscreen()
       setIsStarted(true)
     } catch (err) {
       alert("กรุณาอนุญาตให้เข้าโหมดเต็มจอเพื่อทำข้อสอบ")
-      console.error("Fullscreen failed:", err)
     }
   }
 
@@ -295,7 +331,7 @@ export default function ExamRoomPage() {
     )
   if (!examData) return null
 
-  // [NEW] Overlay ก่อนเริ่มสอบ (User Gesture Required)
+  // Start Overlay
   if (!isStarted) {
     return (
       <div className="fixed inset-0 bg-gray-900 z-[9999] flex flex-col items-center justify-center text-white p-8 text-center">
@@ -348,7 +384,10 @@ export default function ExamRoomPage() {
   const { exam } = examData
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 select-none">
+    <div
+      className="min-h-screen bg-gray-50 pb-20 select-none"
+      onCopy={(e) => e.preventDefault()}
+    >
       {!isOnline && (
         <div className="bg-amber-500 text-white text-center py-2 px-4 text-sm font-bold sticky top-0 z-[100] animate-pulse">
           <WifiOff size={16} className="inline mr-2" />{" "}
@@ -421,30 +460,32 @@ export default function ExamRoomPage() {
 
         {exam.questions.map((q: any, idx: number) => (
           <Card key={q.id} className="p-6 hover:shadow-md transition-shadow">
-            <div className="mb-6">
-              <div className="flex gap-2 items-start">
-                <span className="font-bold text-lg text-blue-600 bg-blue-50 w-8 h-8 flex items-center justify-center rounded-full shrink-0">
-                  {idx + 1}
+            <div className="mb-6 flex gap-2 items-start">
+              <span className="font-bold text-lg text-blue-600 bg-blue-50 w-8 h-8 flex items-center justify-center rounded-full shrink-0">
+                {idx + 1}
+              </span>
+              <div className="w-full space-y-3">
+                <p className="text-lg font-medium text-gray-900 whitespace-pre-line pointer-events-none">
+                  {q.questionText}
+                </p>
+                {/* Image Support */}
+                {q.imageUrl && (
+                  <img
+                    src={q.imageUrl}
+                    alt="Question"
+                    className="max-h-[400px] max-w-full rounded border shadow-sm object-contain"
+                    draggable="false"
+                    onContextMenu={(e) => e.preventDefault()}
+                  />
+                )}
+                <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
+                  {q.score} คะแนน
                 </span>
-                <div className="w-full space-y-3">
-                  <p className="text-lg font-medium text-gray-900 whitespace-pre-line">
-                    {q.questionText}
-                  </p>
-                  {q.imageUrl && (
-                    <img
-                      src={q.imageUrl}
-                      alt="Question"
-                      className="max-h-[400px] max-w-full rounded border shadow-sm object-contain"
-                    />
-                  )}
-                  <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded">
-                    {q.score} คะแนน
-                  </span>
-                </div>
               </div>
             </div>
 
             <RadioGroup
+              // Fix Uncontrolled Component Error
               value={answers[q.id]?.toString() ?? ""}
               onValueChange={(val) => handleAnswer(q.id, Number(val))}
               className="pl-10 space-y-3"
@@ -468,12 +509,14 @@ export default function ExamRoomPage() {
                     htmlFor={`c-${c.id}`}
                     className="flex-1 cursor-pointer font-normal text-gray-700 text-base"
                   >
-                    <div>{c.choiceText}</div>
+                    <div className="select-none">{c.choiceText}</div>
                     {c.imageUrl && (
                       <img
                         src={c.imageUrl}
                         alt="Choice"
                         className="h-24 mt-2 rounded border object-contain bg-white"
+                        draggable="false"
+                        onContextMenu={(e) => e.preventDefault()}
                       />
                     )}
                   </Label>
@@ -482,10 +525,11 @@ export default function ExamRoomPage() {
             </RadioGroup>
           </Card>
         ))}
-        {/* --- [NEW] ปุ่มส่งคำตอบด้านล่าง (Bottom Submit Section) --- */}
+
+        {/* --- Bottom Submit Section --- */}
         <div className="mt-12 mb-8 p-8 bg-white rounded-2xl border border-blue-100 shadow-lg flex flex-col items-center text-center space-y-4">
           <div className="bg-blue-50 p-3 rounded-full">
-            <CheckCircle2 size={32} className="text-blue-600" />
+            <CheckCircle size={32} className="text-blue-600" />
           </div>
           <div>
             <h3 className="text-xl font-bold text-gray-800">
@@ -495,7 +539,6 @@ export default function ExamRoomPage() {
               กรุณาตรวจสอบคำตอบอีกครั้ง เมื่อมั่นใจแล้วให้กดปุ่มส่งคำตอบด้านล่าง
             </p>
           </div>
-
           <Button
             onClick={handleManualSubmit}
             className="w-full md:w-1/2 text-xl py-8 rounded-xl font-bold shadow-blue-200 shadow-xl transition-all hover:scale-105 active:scale-95 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
