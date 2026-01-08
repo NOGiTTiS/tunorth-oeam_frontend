@@ -11,18 +11,17 @@ import {
   Edit,
   Eye,
   BarChart3,
-  Power,
   Clock,
+  CalendarClock, // เพิ่ม icon นี้
 } from "lucide-react"
 
-// Interface สำหรับข้อมูลข้อสอบ
 interface Exam {
   id: number
   subjectName: string
   title: string
   durationMinutes: number
   _count: { questions: number }
-  isActive: boolean
+  // isActive เอาออกแล้ว เพราะไปเช็คที่ Schedule แทน
 }
 
 export default function TeacherDashboard() {
@@ -33,7 +32,6 @@ export default function TeacherDashboard() {
     fetchExams()
   }, [])
 
-  // 1. ดึงข้อมูลข้อสอบทั้งหมด
   const fetchExams = async () => {
     try {
       const res = await axios.get("http://localhost:8000/exams")
@@ -45,29 +43,18 @@ export default function TeacherDashboard() {
     }
   }
 
-  // 2. ฟังก์ชันลบข้อสอบ
   const deleteExam = async (id: number) => {
     if (
-      !confirm("ยืนยันการลบข้อสอบชุดนี้? (ข้อมูลการสอบและคะแนนจะหายไปทั้งหมด)")
+      !confirm(
+        "ยืนยันการลบข้อสอบชุดนี้? (ข้อมูลการสอบ, ตารางสอบ และคะแนนจะหายไปทั้งหมด)"
+      )
     )
       return
     try {
       await axios.delete(`http://localhost:8000/exams/${id}`)
-      fetchExams() // โหลดข้อมูลใหม่หลังลบ
+      fetchExams()
     } catch (error) {
       alert("ลบไม่สำเร็จ")
-    }
-  }
-
-  // 3. ฟังก์ชันเปิด/ปิดสถานะสอบ (Toggle Active)
-  const toggleActive = async (examId: number, currentStatus: boolean) => {
-    try {
-      await axios.patch(`http://localhost:8000/exams/${examId}/toggle`, {
-        isActive: !currentStatus,
-      })
-      fetchExams() // โหลดข้อมูลใหม่เพื่ออัปเดต UI
-    } catch (error) {
-      alert("เปลี่ยนสถานะไม่สำเร็จ")
     }
   }
 
@@ -86,14 +73,12 @@ export default function TeacherDashboard() {
         </Link>
       </div>
 
-      {/* Loading State */}
       {loading && (
         <div className="text-center py-10 text-gray-500">
           กำลังโหลดข้อมูล...
         </div>
       )}
 
-      {/* Empty State */}
       {!loading && exams.length === 0 && (
         <div className="text-center py-20 bg-gray-50 rounded-lg border-2 border-dashed border-gray-200">
           <p className="text-gray-400 mb-4">ยังไม่มีชุดข้อสอบ</p>
@@ -103,14 +88,11 @@ export default function TeacherDashboard() {
         </div>
       )}
 
-      {/* Exams Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {exams.map((exam) => (
           <Card
             key={exam.id}
-            className={`hover:shadow-lg transition-all duration-200 border-t-4 ${
-              exam.isActive ? "border-t-green-500" : "border-t-gray-300"
-            }`}
+            className="hover:shadow-lg transition-all duration-200 border-t-4 border-t-blue-500"
           >
             <CardHeader className="pb-2">
               <div className="flex justify-between items-start">
@@ -121,20 +103,17 @@ export default function TeacherDashboard() {
                   {exam.subjectName}
                 </CardTitle>
 
-                {/* ปุ่ม Toggle Status */}
-                <Button
-                  variant={exam.isActive ? "default" : "secondary"}
-                  size="sm"
-                  onClick={() => toggleActive(exam.id, exam.isActive)}
-                  className={`h-7 px-2 text-xs gap-1 transition-colors ${
-                    exam.isActive
-                      ? "bg-green-100 text-green-700 hover:bg-green-200 border border-green-200"
-                      : "bg-gray-100 text-gray-500 hover:bg-gray-200 border border-gray-200"
-                  }`}
-                >
-                  <Power size={12} />
-                  {exam.isActive ? "เปิดสอบอยู่" : "ปิดสอบ"}
-                </Button>
+                {/* ปุ่มจัดการตารางสอบ (แทนปุ่ม Toggle Active เดิม) */}
+                <Link href={`/teacher/exams/${exam.id}/schedules`}>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-7 px-2 text-xs gap-1 bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100"
+                  >
+                    <CalendarClock size={12} />
+                    ตารางสอบ
+                  </Button>
+                </Link>
               </div>
             </CardHeader>
 
@@ -158,7 +137,6 @@ export default function TeacherDashboard() {
 
               {/* Action Buttons Grid */}
               <div className="grid grid-cols-2 gap-2">
-                {/* 1. Edit */}
                 <Link
                   href={`/teacher/exams/${exam.id}/edit`}
                   className="w-full"
@@ -168,11 +146,10 @@ export default function TeacherDashboard() {
                     size="sm"
                     className="w-full gap-1 hover:bg-gray-50"
                   >
-                    <Edit size={14} /> แก้ไข
+                    <Edit size={14} /> แก้ไขโจทย์
                   </Button>
                 </Link>
 
-                {/* 2. Delete */}
                 <Button
                   variant="outline"
                   size="sm"
@@ -182,7 +159,6 @@ export default function TeacherDashboard() {
                   <Trash2 size={14} /> ลบ
                 </Button>
 
-                {/* 3. Monitor (Real-time) */}
                 <Link
                   href={`/teacher/exams/${exam.id}/monitor`}
                   className="w-full"
@@ -196,7 +172,6 @@ export default function TeacherDashboard() {
                   </Button>
                 </Link>
 
-                {/* 4. Results (Report) */}
                 <Link
                   href={`/teacher/exams/${exam.id}/results`}
                   className="w-full"

@@ -4,7 +4,7 @@ import axios from "axios"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Clock, PlayCircle } from "lucide-react"
+import { Clock, PlayCircle, CalendarDays } from "lucide-react"
 
 export default function StudentDashboard() {
   const router = useRouter()
@@ -37,12 +37,17 @@ export default function StudentDashboard() {
         <h1 className="text-3xl font-bold mb-2">
           👋 สวัสดี, {user?.fullName || "นักเรียน"}
         </h1>
-        <p className="opacity-90">เตรียมความพร้อม แล้วลุยข้อสอบกันเลย!</p>
+        <p className="opacity-90">
+          ห้องเรียน:{" "}
+          <span className="font-bold bg-white/20 px-2 py-0.5 rounded ml-1">
+            {user?.classRoom || "-"}
+          </span>
+        </p>
       </div>
 
       <div>
         <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          📚 รายวิชาที่เปิดสอบ
+          📚 รายวิชาที่เปิดสอบสำหรับคุณ
         </h2>
 
         {exams.length === 0 ? (
@@ -51,41 +56,79 @@ export default function StudentDashboard() {
           </div>
         ) : (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {exams.map((exam) => (
-              <Card
-                key={exam.id}
-                className="group hover:shadow-xl transition-all duration-300 border-t-4 border-t-blue-500 overflow-hidden"
-              >
-                <CardHeader className="bg-gray-50/50 pb-3">
-                  <CardTitle>
-                    <div className="text-sm font-medium text-blue-600 mb-1">
-                      {exam.subjectName}
+            {exams.map((exam) => {
+              // ดึง Schedule ของห้องนักเรียน (API จะส่งมาให้แค่อันเดียวที่ตรงกับห้อง)
+              const schedule = exam.schedules?.[0]
+
+              return (
+                <Card
+                  key={exam.id}
+                  className="group hover:shadow-xl transition-all duration-300 border-t-4 border-t-blue-500 overflow-hidden bg-white"
+                >
+                  <CardHeader className="bg-gray-50/50 pb-3 border-b">
+                    <CardTitle>
+                      <div className="text-sm font-medium text-blue-600 mb-1 truncate">
+                        {exam.subjectName}
+                      </div>
+                      <div className="text-lg leading-tight group-hover:text-blue-700 transition-colors line-clamp-2 min-h-[1.5em]">
+                        {exam.title}
+                      </div>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-4">
+                    {/* แสดงวันเวลาสอบ */}
+                    {schedule ? (
+                      <div className="text-sm bg-blue-50 text-blue-900 p-3 rounded-lg border border-blue-100 flex flex-col gap-1">
+                        <div className="flex items-center gap-2 font-semibold">
+                          <CalendarDays size={16} className="text-blue-600" />
+                          {new Date(schedule.startTime).toLocaleDateString(
+                            "th-TH",
+                            {
+                              day: "numeric",
+                              month: "short",
+                              year: "2-digit",
+                            }
+                          )}
+                        </div>
+                        <div className="pl-6 text-xs text-gray-600">
+                          {new Date(schedule.startTime).toLocaleTimeString(
+                            "th-TH",
+                            { hour: "2-digit", minute: "2-digit" }
+                          )}{" "}
+                          -{" "}
+                          {new Date(schedule.endTime).toLocaleTimeString(
+                            "th-TH",
+                            { hour: "2-digit", minute: "2-digit" }
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm bg-gray-50 text-gray-500 p-3 rounded-lg border flex justify-center">
+                        ไม่ระบุเวลา
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between text-sm text-gray-600 px-1">
+                      <div className="flex items-center gap-1">
+                        <Clock size={14} /> {exam.durationMinutes} นาที
+                      </div>
+                      <div>{exam._count?.questions || 0} ข้อ</div>
                     </div>
-                    <div className="text-lg leading-tight group-hover:text-blue-700 transition-colors">
-                      {exam.title}
-                    </div>
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="pt-4">
-                  <div className="flex items-center gap-4 text-sm text-gray-600 mb-6">
-                    <div className="flex items-center gap-1 bg-gray-100 px-2 py-1 rounded">
-                      <Clock size={14} /> {exam.durationMinutes} นาที
-                    </div>
-                    <div className="text-gray-400">|</div>
-                    <div>{exam._count?.questions || 0} ข้อ</div>
-                  </div>
-                  <Button
-                    className="w-full gap-2 transition-transform active:scale-95"
-                    onClick={() => handleStartExam(exam.id)}
-                    disabled={!exam.isActive}
-                    variant={exam.isActive ? "default" : "secondary"}
-                  >
-                    <PlayCircle size={16} />
-                    {exam.isActive ? "เข้าห้องสอบ" : "ยังไม่เปิดให้สอบ"}
-                  </Button>
-                </CardContent>
-              </Card>
-            ))}
+
+                    <Button
+                      className="w-full gap-2 transition-transform active:scale-95"
+                      onClick={() => handleStartExam(exam.id)}
+                      // ปุ่มจะกดได้ก็ต่อเมื่อ มีตารางสอบ และครูเปิด Active
+                      // (ถึงแม้ API จะกรองมาแล้ว แต่ใส่ disabled ไว้เพื่อความปลอดภัย UX)
+                      disabled={!schedule}
+                      variant="default"
+                    >
+                      <PlayCircle size={16} /> เข้าห้องสอบ
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
           </div>
         )}
       </div>

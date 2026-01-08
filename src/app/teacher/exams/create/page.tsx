@@ -16,30 +16,27 @@ export default function CreateExamPage() {
     subjectName: "",
     title: "",
     durationMinutes: 60,
-    startDatetime: "",
-    endDatetime: "",
-    isRandomQuestion: false, // เพิ่ม state
-    isRandomChoice: false, // เพิ่ม state
+    isRandomQuestion: false,
+    isRandomChoice: false,
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     try {
-      // หมายเหตุ: teacherId ควรดึงจาก User Session/Token จริง (ในที่นี้ Hardcode ไว้ก่อนตาม Phase แรก)
+      // ไม่ต้องส่ง start/end datetime แล้ว
       const payload = {
         ...formData,
-        teacherId: 1,
         durationMinutes: Number(formData.durationMinutes),
       }
 
       const res = await axios.post("http://localhost:8000/exams", payload)
 
-      // สร้างเสร็จแล้ว Redirect ไปหน้า Edit เพื่อเพิ่มโจทย์
+      // สร้างเสร็จ ไปหน้า Edit โจทย์ต่อ
       router.push(`/teacher/exams/${res.data.id}/edit`)
     } catch (error) {
       console.error(error)
-      alert("สร้างข้อสอบไม่สำเร็จ กรุณาตรวจสอบข้อมูล")
+      alert("สร้างข้อสอบไม่สำเร็จ")
     } finally {
       setLoading(false)
     }
@@ -55,7 +52,6 @@ export default function CreateExamPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Subject & Title */}
             <div className="space-y-4">
               <div>
                 <Label>รหัสวิชา / ชื่อวิชา</Label>
@@ -81,7 +77,6 @@ export default function CreateExamPage() {
               </div>
             </div>
 
-            {/* Time Settings */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label>ระยะเวลาสอบ (นาที)</Label>
@@ -98,34 +93,9 @@ export default function CreateExamPage() {
                   }
                 />
               </div>
+              {/* ลบ Start/End Datetime ออกจากตรงนี้ */}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label>เริ่มเปิดให้สอบ</Label>
-                <Input
-                  type="datetime-local"
-                  required
-                  value={formData.startDatetime}
-                  onChange={(e) =>
-                    setFormData({ ...formData, startDatetime: e.target.value })
-                  }
-                />
-              </div>
-              <div>
-                <Label>สิ้นสุดการสอบ</Label>
-                <Input
-                  type="datetime-local"
-                  required
-                  value={formData.endDatetime}
-                  onChange={(e) =>
-                    setFormData({ ...formData, endDatetime: e.target.value })
-                  }
-                />
-              </div>
-            </div>
-
-            {/* Randomization Settings (New Section) */}
             <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 space-y-3">
               <h3 className="font-semibold text-gray-700 flex items-center gap-2">
                 <Shuffle size={16} /> การสุ่ม (Randomization)
@@ -135,7 +105,7 @@ export default function CreateExamPage() {
                   <input
                     type="checkbox"
                     id="randQ"
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                    className="w-5 h-5 cursor-pointer"
                     checked={formData.isRandomQuestion}
                     onChange={(e) =>
                       setFormData({
@@ -145,14 +115,14 @@ export default function CreateExamPage() {
                     }
                   />
                   <Label htmlFor="randQ" className="cursor-pointer font-normal">
-                    สุ่มลำดับโจทย์ (Random Questions)
+                    สุ่มลำดับโจทย์
                   </Label>
                 </div>
                 <div className="flex items-center space-x-3">
                   <input
                     type="checkbox"
                     id="randC"
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                    className="w-5 h-5 cursor-pointer"
                     checked={formData.isRandomChoice}
                     onChange={(e) =>
                       setFormData({
@@ -162,15 +132,10 @@ export default function CreateExamPage() {
                     }
                   />
                   <Label htmlFor="randC" className="cursor-pointer font-normal">
-                    สุ่มลำดับตัวเลือก (Random Choices)
+                    สุ่มลำดับตัวเลือก
                   </Label>
                 </div>
               </div>
-              <p className="text-xs text-gray-500 mt-2">
-                * ระบบจะสุ่มลำดับเฉพาะมุมมองของนักเรียนแต่ละคน (นาย A และ นาย B
-                จะเห็นลำดับไม่เหมือนกัน) แต่ถ้า นาย A เข้าใหม่
-                ลำดับจะยังคงเดิมเพื่อป้องกันความสับสน
-              </p>
             </div>
 
             <Button
