@@ -35,7 +35,9 @@ export default function TeacherDashboard() {
 
   const fetchExams = async () => {
     try {
-      const res = await axios.get("http://localhost:8000/exams")
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/exams`
+      )
       setExams(res.data)
     } catch (error) {
       console.error("Failed to load exams")
@@ -52,7 +54,11 @@ export default function TeacherDashboard() {
     )
       return
     try {
-      await axios.delete(`http://localhost:8000/exams/${id}`)
+      await axios.delete(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/exams/${id}`
+      )
       fetchExams()
     } catch (error) {
       alert("ลบไม่สำเร็จ")

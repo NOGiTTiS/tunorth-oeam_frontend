@@ -21,11 +21,16 @@ import {
   CheckCircle,
 } from "lucide-react"
 
+// ตรวจสอบว่ามีไฟล์นี้ที่ frontend/src/components/ExamTimer.tsx แล้ว
 import { ExamTimer } from "@/components/ExamTimer"
 
-const socket = io("http://localhost:8001", {
-  autoConnect: false,
-})
+const socket = io(
+  process.env.NEXT_PUBLIC_API_URL?.replace("8000", "8001") ||
+    "http://localhost:8001",
+  {
+    autoConnect: false,
+  }
+)
 
 export default function ExamRoomPage() {
   const params = useParams()
@@ -68,7 +73,11 @@ export default function ExamRoomPage() {
     // Active Heartbeat Check (Every 3s)
     const heartbeatInterval = setInterval(async () => {
       try {
-        await axios.get("http://localhost:8000/", { timeout: 2000 })
+        // ยิงไปที่ Root API เพื่อเช็คว่า Server ยังอยู่ไหม
+        await axios.get(
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/",
+          { timeout: 2000 }
+        )
         if (!isOnlineRef.current) updateOnlineStatus(true)
       } catch (error) {
         if (isOnlineRef.current) {
@@ -108,7 +117,12 @@ export default function ExamRoomPage() {
     setSaving(true)
     try {
       for (const item of queue) {
-        await axios.post("http://localhost:8000/take/answer", item)
+        await axios.post(
+          process.env.NEXT_PUBLIC_API_URL
+            ? `${process.env.NEXT_PUBLIC_API_URL}/take/answer`
+            : "http://localhost:8000/take/answer",
+          item
+        )
       }
       localStorage.removeItem(queueKey)
       setPendingSync(0)
@@ -123,15 +137,16 @@ export default function ExamRoomPage() {
   useEffect(() => {
     const fetchSession = async () => {
       try {
-        const res = await axios.get(
-          `http://localhost:8000/take/session/${sessionId}`
-        )
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        const res = await axios.get(`${apiUrl}/take/session/${sessionId}`)
         setExamData(res.data)
 
+        // เช็ค Locked Status จาก DB (กัน F5)
         if (res.data.status === "LOCKED") {
           setIsLocked(true)
           setCanResume(false)
-          setIsStarted(true)
+          setIsStarted(true) // ถ้าโดนล็อก แสดงว่าเริ่มไปแล้ว
         }
 
         const savedAnswers: Record<number, number> = {}
@@ -139,6 +154,7 @@ export default function ExamRoomPage() {
           savedAnswers[ans.questionId] = ans.selectedChoiceId
         })
 
+        // Merge Offline Queue
         const queue = JSON.parse(
           localStorage.getItem(`offline_queue_${sessionId}`) || "[]"
         )
@@ -160,9 +176,9 @@ export default function ExamRoomPage() {
     }
   }, [sessionId, router])
 
-  // --- 3. Security Logic ---
+  // --- 3. Security Logic (Anti-Cheat & Anti-Copy) ---
   useEffect(() => {
-    // Anti-Copy / Paste / ContextMenu
+    // 3.1 Anti-Copy / Paste / ContextMenu
     const preventAction = (e: Event) => {
       e.preventDefault()
       e.stopPropagation()
@@ -170,6 +186,7 @@ export default function ExamRoomPage() {
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent F12, Ctrl+C, Ctrl+V, etc.
       if (e.key === "F12") e.preventDefault()
       if (
         (e.ctrlKey || e.metaKey) &&
@@ -186,6 +203,7 @@ export default function ExamRoomPage() {
     document.addEventListener("paste", preventAction)
     document.addEventListener("keydown", handleKeyDown)
 
+    // 3.2 Fullscreen & Tab Switching Monitoring
     if (!examData || !isStarted) return
 
     const { exam, studentId, student } = examData
@@ -235,7 +253,7 @@ export default function ExamRoomPage() {
       document.removeEventListener("fullscreenchange", handleFullscreenChange)
       socket.off("force_unlock")
     }
-  }, [examData, isLocked, isOnline, isStarted])
+  }, [examData, isLocked, isOnline, isStarted, sessionId]) // Added sessionId to deps
 
   // --- 4. Handlers ---
   const handleUserStart = async () => {
@@ -270,9 +288,8 @@ export default function ExamRoomPage() {
       return
     }
     try {
-      await axios.post("http://localhost:8000/take/answer", payload, {
-        timeout: 3000,
-      })
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      await axios.post(`${apiUrl}/take/answer`, payload, { timeout: 3000 })
     } catch (error) {
       saveToOfflineQueue(payload)
       updateOnlineStatus(false)
@@ -300,7 +317,7 @@ export default function ExamRoomPage() {
       return
     }
 
-    // [MODIFIED] ตรวจสอบว่าทำครบทุกข้อหรือไม่
+    // Check Incomplete
     if (examData) {
       const totalQuestions = examData.exam.questions.length
       const answeredCount = Object.keys(answers).length
@@ -310,19 +327,18 @@ export default function ExamRoomPage() {
         const confirmIncomplete = confirm(
           `⚠️ คุณยังทำข้อสอบไม่ครบ ${unanswered} ข้อ\n\nยืนยันที่จะส่งข้อสอบเลยหรือไม่?`
         )
-        if (!confirmIncomplete) return // กดยกเลิก ก็ไม่ต้องส่ง
+        if (!confirmIncomplete) return
       } else {
-        // ทำครบแล้ว ถามยืนยันปกติ
         if (!confirm("ยืนยันการส่งข้อสอบ?")) return
       }
     } else {
-      // Fallback กรณีโหลดข้อมูลไม่ทัน (ไม่น่าเกิด)
       if (!confirm("ยืนยันการส่งข้อสอบ?")) return
     }
 
     await syncAnswers()
     try {
-      await axios.post("http://localhost:8000/take/submit", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      await axios.post(`${apiUrl}/take/submit`, {
         sessionId: Number(sessionId),
       })
       router.push("/student/dashboard")
@@ -333,7 +349,19 @@ export default function ExamRoomPage() {
 
   const handleTimeUp = () => {
     alert("หมดเวลาสอบ!")
-    handleManualSubmit()
+    // Auto-submit without confirmation logic, but try sync first
+    syncAnswers().then(async () => {
+      try {
+        const apiUrl =
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        await axios.post(`${apiUrl}/take/submit`, {
+          sessionId: Number(sessionId),
+        })
+        router.push("/student/dashboard")
+      } catch (e) {
+        console.error("Auto submit failed")
+      }
+    })
   }
 
   // --- Render ---

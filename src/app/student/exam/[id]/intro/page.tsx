@@ -19,10 +19,15 @@ export default function ExamIntroPage() {
 
     try {
       // 1. เรียก API Start/Resume Session
-      const res = await axios.post("http://localhost:8000/take/start", {
-        studentId: user.id,
-        examId: Number(params.id),
-      })
+      const res = await axios.post(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/take/start`,
+        {
+          studentId: user.id,
+          examId: Number(params.id),
+        }
+      )
 
       const { sessionId, status } = res.data
 

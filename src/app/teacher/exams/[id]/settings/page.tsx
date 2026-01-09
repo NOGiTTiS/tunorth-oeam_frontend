@@ -29,7 +29,11 @@ export default function EditExamSettingsPage() {
   useEffect(() => {
     const fetchExam = async () => {
       try {
-        const res = await axios.get(`http://localhost:8000/exams/${examId}`)
+        const res = await axios.get(
+          `${
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          }/exams/${examId}`
+        )
         const data = res.data
         setFormData({
           subjectName: data.subjectName,
@@ -53,10 +57,15 @@ export default function EditExamSettingsPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      await axios.put(`http://localhost:8000/exams/${examId}`, {
-        ...formData,
-        durationMinutes: Number(formData.durationMinutes),
-      })
+      await axios.put(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/exams/${examId}`,
+        {
+          ...formData,
+          durationMinutes: Number(formData.durationMinutes),
+        }
+      )
 
       alert("บันทึกข้อมูลเรียบร้อย")
       router.push("/teacher/dashboard")

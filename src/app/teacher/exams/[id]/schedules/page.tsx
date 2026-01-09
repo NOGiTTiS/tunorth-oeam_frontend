@@ -7,81 +7,83 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, CalendarClock, Plus, Trash2, Power } from "lucide-react" // ตรวจสอบว่ามี Trash2
+import { ArrowLeft, CalendarClock, Plus, Trash2, Power } from "lucide-react"
 import Link from "next/link"
 
 export default function ExamSchedulesPage() {
-  // ... (State และ useEffect เดิม) ...
   const params = useParams()
   const examId = params.id
   const [schedules, setSchedules] = useState<any[]>([])
   const [examTitle, setExamTitle] = useState("")
 
-  // Form State
   const [classRoomInput, setClassRoomInput] = useState("")
   const [startTime, setStartTime] = useState("")
   const [endTime, setEndTime] = useState("")
+
+  // [FIX] กำหนด URL กลาง (ถ้ามี Env ให้ใช้ Env, ถ้าไม่มีให้ใช้ localhost)
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
 
   useEffect(() => {
     fetchData()
   }, [examId])
 
   const fetchData = async () => {
-    // ... (Logic เดิม)
     try {
-      const examRes = await axios.get(`http://localhost:8000/exams/${examId}`)
+      // [FIX] ใช้ apiUrl
+      const examRes = await axios.get(`${apiUrl}/exams/${examId}`)
       setExamTitle(examRes.data.subjectName + " - " + examRes.data.title)
-      const schRes = await axios.get(
-        `http://localhost:8000/exams/${examId}/schedules`
-      )
+
+      const schRes = await axios.get(`${apiUrl}/exams/${examId}/schedules`)
       setSchedules(schRes.data)
     } catch (error) {
-      console.error(error)
+      console.error("Fetch Error:", error)
     }
   }
 
   const handleAddSchedule = async (e: React.FormEvent) => {
-    // ... (Logic เดิม)
     e.preventDefault()
     try {
       const rooms = classRoomInput
         .split(",")
         .map((r) => r.trim())
         .filter((r) => r !== "")
-      await axios.post(`http://localhost:8000/exams/${examId}/schedules`, {
+      const startTimeISO = new Date(startTime).toISOString()
+      const endTimeISO = new Date(endTime).toISOString()
+
+      // [FIX] ใช้ apiUrl
+      await axios.post(`${apiUrl}/exams/${examId}/schedules`, {
         classRooms: rooms,
-        startTime,
-        endTime,
+        startTime: startTimeISO,
+        endTime: endTimeISO,
       })
+
       fetchData()
       setClassRoomInput("")
     } catch (error) {
       alert("เพิ่มตารางไม่สำเร็จ")
+      console.error(error)
     }
   }
 
   const toggleActive = async (scheduleId: number, currentStatus: boolean) => {
-    // ... (Logic เดิม)
     try {
-      await axios.patch(
-        `http://localhost:8000/exams/schedules/${scheduleId}/toggle`,
-        {
-          isActive: !currentStatus,
-        }
-      )
+      // [FIX] ใช้ apiUrl
+      await axios.patch(`${apiUrl}/exams/schedules/${scheduleId}/toggle`, {
+        isActive: !currentStatus,
+      })
       fetchData()
     } catch (error) {
       alert("Error")
     }
   }
 
-  // --- [NEW] เพิ่มฟังก์ชันลบ ---
   const handleDeleteSchedule = async (scheduleId: number) => {
     if (!confirm("ยืนยันการลบตารางสอบนี้?")) return
 
     try {
-      await axios.delete(`http://localhost:8000/exams/schedules/${scheduleId}`)
-      fetchData() // โหลดข้อมูลใหม่
+      // [FIX] ใช้ apiUrl
+      await axios.delete(`${apiUrl}/exams/schedules/${scheduleId}`)
+      fetchData()
     } catch (error) {
       alert("ลบไม่สำเร็จ")
     }
@@ -89,7 +91,6 @@ export default function ExamSchedulesPage() {
 
   return (
     <div className="space-y-6 pb-20">
-      {/* ... (Header เดิม) ... */}
       <div className="flex items-center gap-4 border-b pb-4">
         <Link href="/teacher/dashboard">
           <Button variant="outline" size="icon">
@@ -103,7 +104,7 @@ export default function ExamSchedulesPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Form เพิ่มตาราง (เหมือนเดิม) */}
+        {/* Form เพิ่มตาราง */}
         <Card className="lg:col-span-1 h-fit">
           <CardHeader className="bg-blue-50">
             <CardTitle className="text-blue-800 flex items-center gap-2">
@@ -186,11 +187,9 @@ export default function ExamSchedulesPage() {
                       >
                         {sch.isActive ? "OPEN" : "CLOSED"}
                       </div>
-
-                      {/* ปุ่มเปิด/ปิดสอบ */}
                       <Button
                         size="sm"
-                        variant={sch.isActive ? "default" : "secondary"} // เปลี่ยน style ตามสถานะ
+                        variant={sch.isActive ? "default" : "secondary"}
                         onClick={() => toggleActive(sch.id, sch.isActive)}
                         className={
                           sch.isActive
@@ -201,8 +200,6 @@ export default function ExamSchedulesPage() {
                         <Power size={14} className="mr-1" />{" "}
                         {sch.isActive ? "เปิดอยู่" : "เปิดสอบ"}
                       </Button>
-
-                      {/* --- [NEW] ปุ่มลบ --- */}
                       <Button
                         size="icon"
                         variant="ghost"

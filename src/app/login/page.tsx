@@ -28,10 +28,15 @@ export default function LoginPage() {
 
     try {
       // เรียก API Backend
-      const res = await axios.post("http://localhost:8000/auth/login", {
-        username,
-        password,
-      })
+      const res = await axios.post(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/auth/login`,
+        {
+          username,
+          password,
+        }
+      )
 
       // เก็บ Token ลง LocalStorage
       const { token, user } = res.data

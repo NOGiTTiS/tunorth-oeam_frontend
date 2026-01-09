@@ -26,7 +26,9 @@ export default function StudentDashboard() {
 
   const fetchExams = async () => {
     try {
-      const res = await axios.get("http://localhost:8000/exams")
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/exams`
+      )
       setExams(res.data)
     } catch (e) {
       console.error(e)

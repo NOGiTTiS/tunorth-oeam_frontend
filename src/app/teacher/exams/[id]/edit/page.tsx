@@ -72,7 +72,11 @@ export default function EditExamPage() {
 
   const fetchExamData = async () => {
     try {
-      const res = await axios.get(`http://localhost:8000/exams/${examId}`)
+      const res = await axios.get(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/exams/${examId}`
+      )
       setExam(res.data)
     } catch (error) {
       console.error(error)
@@ -95,9 +99,13 @@ export default function EditExamPage() {
     formData.append("file", file)
 
     try {
-      const res = await axios.post("http://localhost:8000/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      })
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/upload`,
+        formData,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      )
       const url = res.data.url
 
       if (mode === "create") {
@@ -143,11 +151,16 @@ export default function EditExamPage() {
   const handleAddQuestion = async () => {
     if (!newQuestion.questionText) return alert("กรุณากรอกโจทย์")
     try {
-      await axios.post("http://localhost:8000/questions", {
-        examId: Number(examId),
-        ...newQuestion,
-        questionType: "MCQ",
-      })
+      await axios.post(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/questions`,
+        {
+          examId: Number(examId),
+          ...newQuestion,
+          questionType: "MCQ",
+        }
+      )
       setNewQuestion({
         questionText: "",
         imageUrl: "",
@@ -214,7 +227,12 @@ export default function EditExamPage() {
         })),
       }
 
-      await axios.put(`http://localhost:8000/questions/${editForm.id}`, payload)
+      await axios.put(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/questions/${editForm.id}`,
+        payload
+      )
 
       alert("แก้ไขสำเร็จ")
       setEditingId(null)
@@ -233,7 +251,11 @@ export default function EditExamPage() {
 
   const handleDeleteQuestion = async (qId: number) => {
     if (!confirm("ลบข้อนี้?")) return
-    await axios.delete(`http://localhost:8000/questions/${qId}`)
+    await axios.delete(
+      `${
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      }/questions/${qId}`
+    )
     fetchExamData()
   }
 
@@ -330,10 +352,15 @@ export default function EditExamPage() {
 
       // 3. ส่งไป Backend
       try {
-        await axios.post("http://localhost:8000/questions/bulk", {
-          examId: Number(examId),
-          questions: formattedQuestions,
-        })
+        await axios.post(
+          `${
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          }/questions/bulk`,
+          {
+            examId: Number(examId),
+            questions: formattedQuestions,
+          }
+        )
         alert(`นำเข้าสำเร็จ ${formattedQuestions.length} ข้อ`)
         fetchExamData()
       } catch (error) {

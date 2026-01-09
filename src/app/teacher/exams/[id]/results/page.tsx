@@ -13,7 +13,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Download, FileBarChart } from "lucide-react"
+import { Download, FileBarChart, ArrowLeft } from "lucide-react"
+import Link from "next/link"
 import * as XLSX from "xlsx"
 
 // Interface สำหรับข้อมูลรายงาน
@@ -40,7 +41,9 @@ export default function ExamResultsPage() {
   const fetchReport = async () => {
     try {
       const res = await axios.get(
-        `http://localhost:8000/exams/${examId}/report`
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/exams/${examId}/report`
       )
       setReport(res.data)
     } catch (error) {
@@ -75,9 +78,16 @@ export default function ExamResultsPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <FileBarChart className="text-blue-600" /> รายงานผลคะแนน
-        </h1>
+        <div className="flex items-center gap-4">
+          <Link href="/teacher/dashboard">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft size={24} />
+            </Button>
+          </Link>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <FileBarChart className="text-blue-600" /> รายงานผลคะแนน
+          </h1>
+        </div>
         <Button
           onClick={handleExport}
           className="bg-green-600 hover:bg-green-700"

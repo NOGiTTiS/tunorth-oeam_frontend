@@ -39,7 +39,11 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await axios.get("http://localhost:8000/admin/stats")
+        const res = await axios.get(
+          `${
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          }/admin/stats`
+        )
         setStats(res.data)
       } catch (error) {
         console.error("Failed to load stats")

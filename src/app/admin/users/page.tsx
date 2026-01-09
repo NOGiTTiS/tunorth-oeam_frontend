@@ -69,7 +69,12 @@ export default function UserManagementPage() {
       if (search) params.search = search
       if (roleFilter !== "ALL") params.role = roleFilter
 
-      const res = await axios.get("http://localhost:8000/users", { params })
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/users`,
+        {
+          params,
+        }
+      )
       setUsers(res.data)
     } catch (error) {
       console.error(error)
@@ -84,11 +89,19 @@ export default function UserManagementPage() {
     try {
       if (editId) {
         // Update
-        await axios.put(`http://localhost:8000/users/${editId}`, formData)
+        await axios.put(
+          `${
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          }/users/${editId}`,
+          formData
+        )
       } else {
         // Create
         if (!formData.password) return alert("กรุณากรอกรหัสผ่าน")
-        await axios.post("http://localhost:8000/users", formData)
+        await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/users`,
+          formData
+        )
       }
       setIsOpen(false)
       resetForm()
@@ -100,7 +113,11 @@ export default function UserManagementPage() {
 
   const handleDelete = async (id: number) => {
     if (!confirm("ยืนยันการลบผู้ใช้?")) return
-    await axios.delete(`http://localhost:8000/users/${id}`)
+    await axios.delete(
+      `${
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+      }/users/${id}`
+    )
     fetchUsers()
   }
 
@@ -170,9 +187,14 @@ export default function UserManagementPage() {
       }))
 
       try {
-        await axios.post("http://localhost:8000/users/bulk", {
-          users: formattedUsers,
-        })
+        await axios.post(
+          `${
+            process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+          }/users/bulk`,
+          {
+            users: formattedUsers,
+          }
+        )
         alert(`นำเข้าสำเร็จ ${formattedUsers.length} คน`)
         fetchUsers()
       } catch (error) {

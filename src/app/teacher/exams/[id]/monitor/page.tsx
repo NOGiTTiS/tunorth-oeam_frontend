@@ -3,12 +3,16 @@ import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
 import { io } from "socket.io-client"
 import axios from "axios" // อย่าลืม import axios
+import Link from "next/link"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { AlertTriangle, Unlock, RefreshCw } from "lucide-react"
+import { AlertTriangle, Unlock, RefreshCw, ArrowLeft } from "lucide-react"
 
 // Socket
-const socket = io("http://localhost:8001")
+const socket = io(
+  process.env.NEXT_PUBLIC_SOCKET_URL?.replace("8000", "8001") ||
+    "http://localhost:8001"
+)
 
 interface Log {
   studentName: string
@@ -37,7 +41,9 @@ export default function MonitorPage() {
   const fetchStudentStatus = async () => {
     try {
       const res = await axios.get(
-        `http://localhost:8000/exams/${examId}/sessions`
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
+        }/exams/${examId}/sessions`
       )
       setStudents(res.data)
     } catch (error) {
@@ -77,9 +83,16 @@ export default function MonitorPage() {
   return (
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-red-700 flex items-center gap-2">
-          <AlertTriangle /> Real-time Monitoring
-        </h1>
+        <div className="flex items-center gap-4">
+          <Link href="/teacher/dashboard">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft size={24} />
+            </Button>
+          </Link>
+          <h1 className="text-2xl font-bold text-red-700 flex items-center gap-2">
+            <AlertTriangle /> Real-time Monitoring
+          </h1>
+        </div>
         <div className="space-x-2">
           <Button variant="outline" size="sm" onClick={fetchStudentStatus}>
             <RefreshCw size={16} className="mr-2" /> รีเฟรชสถานะ

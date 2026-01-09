@@ -30,7 +30,10 @@ export default function CreateExamPage() {
         durationMinutes: Number(formData.durationMinutes),
       }
 
-      const res = await axios.post("http://localhost:8000/exams", payload)
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/exams`,
+        payload
+      )
 
       // สร้างเสร็จ ไปหน้า Edit โจทย์ต่อ
       router.push(`/teacher/exams/${res.data.id}/edit`)
